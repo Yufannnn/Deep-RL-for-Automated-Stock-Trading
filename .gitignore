@@ -1,0 +1,20 @@
+# LaTeX build artifacts
+*.aux
+*.log
+*.out
+*.synctex.gz
+*.fls
+*.fdb_latexmk
+
+# Python
+__pycache__/
+*.pyc
+
+# IDE
+.vscode/
+.claude/
+
+# Large/binary files not needed in repo
+admin_week05.pdf
+archive.zip
+YF_signature.png

@@ -1,0 +1,188 @@
+\documentclass[10pt,twocolumn]{article}
+\usepackage[margin=1.8cm]{geometry}
+\usepackage{times}
+\usepackage{titlesec}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{parskip}
+\usepackage{amsmath}
+\usepackage{graphicx}
+
+\titlespacing{\section}{0pt}{4pt}{2pt}
+\titlespacing{\subsection}{0pt}{3pt}{1pt}
+\setlist[itemize]{noitemsep, topsep=1pt, leftmargin=*}
+
+\title{\vspace{-1.5em}\textbf{Deep Reinforcement Learning for Automated Stock Trading}\\[2pt]
+\normalsize CS5242 Group Project Proposal \textemdash{} Group ID24}
+\author{Rutwik Shrikant Dharanappagoudar \quad Zhu Yufan \quad Fei Xin}
+\date{\vspace{-1.2em}}
+
+\begin{document}
+\maketitle
+\thispagestyle{empty}
+\vspace{-1em}
+
+%------------------------------------------------------------
+\section{Motivation}
+Algorithmic trading is a canonical sequential decision-making problem: given
+market observations, an agent must decide when to \emph{buy}, \emph{sell},
+or \emph{hold} a position to maximise long-term profit.
+Classical rule-based strategies such as moving-average crossovers are rigid
+and fail to adapt to the non-stationary nature of financial markets.
+Deep Reinforcement Learning (DRL) offers a principled, data-driven framework
+for learning trading policies end-to-end, without hand-crafted rules,
+making it a natural and compelling application of the deep learning
+concepts studied in this course.
+
+%------------------------------------------------------------
+\section{Project Description}
+We design and implement a complete stock trading system \textbf{from scratch}
+in PyTorch, where an RL agent learns to trade a selection of
+Dow Jones Industrial Average (DJIA) stocks purely from historical price data.
+
+The agent operates inside a custom \texttt{TradingEnv}, a Gym-style
+environment we build ourselves that simulates a realistic single-asset
+trading scenario: at each daily time step the agent observes the current
+market state, selects an action, and receives a reward signal based on
+the resulting profit or loss.
+The environment explicitly models transaction costs to discourage excessive
+trading and encourage stable, profitable policies.
+
+We implement and compare two DRL algorithms of increasing sophistication:
+\begin{itemize}
+  \item \textbf{Deep Q-Network (DQN):} combines Q-learning with a neural
+        network function approximator, an experience replay buffer for
+        sample decorrelation, and a periodically updated target network
+        for training stability.
+  \item \textbf{Double DQN (DDQN):} extends DQN by decoupling action
+        selection from value estimation, reducing the systematic
+        overestimation of Q-values that degrades DQN performance.
+\end{itemize}
+Both agents share the same environment and are benchmarked against a
+passive \emph{buy-and-hold} strategy to assess whether the learned
+policies genuinely add value.
+
+%------------------------------------------------------------
+\section{Proposed Solution}
+
+\textbf{Dataset.}
+Daily OHLCV (Open, High, Low, Close, Volume) data for selected DJIA
+stocks from 2009 to 2024, fetched via \texttt{yfinance}.
+The data is split chronologically: 70\% training, 15\% validation,
+15\% testing, to avoid look-ahead bias.
+
+\textbf{State space.}
+At each time step the agent receives a feature vector encoding:
+(1) normalised daily return $\frac{p_t - p_{t-1}}{p_{t-1}}$,
+(2) price deviation from the 5-day moving average,
+(3) price deviation from the 20-day moving average,
+(4) 14-day Relative Strength Index (RSI-14), and
+(5) the agent's current position $\in\{-1,\,0,\,1\}$.
+All features are normalised to zero mean and unit variance.
+
+\textbf{Action space.}
+Three discrete actions: Buy\,(+1), Hold\,(0), Sell\,($-1$).
+
+\textbf{Reward function.}
+\[
+  r_t \;=\; \mathrm{pos}_t \times \frac{p_t - p_{t-1}}{p_{t-1}}
+           \;-\; c\cdot\mathbf{1}[\text{trade executed}]
+\]
+where $c = 0.001$ penalises each executed trade to model transaction costs.
+
+\textbf{Network architecture.}
+A 3-layer MLP: input $\to$ 128 $\to$ 64 $\to$ \#actions, with ReLU
+activations and a linear output layer. Trained with the Adam optimiser
+($\mathrm{lr} = 10^{-3}$, batch size 64), replay buffer of 10{,}000
+transitions, and target network synchronised every 100 gradient steps.
+
+\textbf{Evaluation.}
+Performance on the held-out test set is measured by cumulative portfolio
+return, annualised Sharpe ratio, and maximum drawdown, all compared
+against the buy-and-hold baseline.
+
+%------------------------------------------------------------
+\section{Project Milestones}
+
+\begin{center}
+\small
+\begin{tabular}{@{}cl@{}}
+\toprule
+\textbf{Week} & \textbf{Milestone} \\
+\midrule
+8  & Data pipeline: download, clean, feature engineering \\
+9  & \texttt{TradingEnv} + DQN implementation from scratch \\
+10 & DDQN; single-stock (AAPL) training \& debugging \\
+11 & Multi-stock experiments; TA Zoom meeting \\
+12 & Evaluation metrics, visualisation, baseline comparison \\
+13 & Report writing \& slide preparation \\
+14 & Video recording; final submission (Apr 26) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+%=============================================================
+% PAGE 2: TEAM CONTRACT (not counted in 1-page limit)
+%=============================================================
+\newpage
+\onecolumn
+\begin{center}
+  {\LARGE\textbf{Team Contract --- Group ID24}}\\[6pt]
+  \textit{CS5242: Neural Networks and Deep Learning, Semester 2 2025/26}
+\end{center}
+
+\bigskip
+\noindent\textbf{Project Title:} Deep Reinforcement Learning for Automated Stock Trading
+
+\bigskip
+\noindent\textbf{Agreed Principles:}
+\begin{itemize}
+  \item All members commit equal effort and attitude toward the project's success.
+  \item Weekly team sync every Monday via Zoom/Teams.
+  \item Weekly progress update sent to the assigned TA every Friday by 6\,pm (Weeks 8--13).
+  \item Decisions are made by consensus; conflicts resolved via majority vote.
+  \item All code is version-controlled in a shared GitHub repository.
+\end{itemize}
+
+\bigskip
+\noindent\textbf{Task Distribution:}
+
+\bigskip
+\begin{center}
+\begin{tabular}{p{5.5cm} p{9.5cm}}
+\toprule
+\textbf{Team Member} & \textbf{Responsibilities} \\
+\midrule
+Rutwik Shrikant Dharanappagoudar &
+  DQN \& DDQN implementation from scratch in PyTorch;
+  experience replay buffer; target network update schedule;
+  hyperparameter tuning. \\[6pt]
+Zhu Yufan &
+  Data collection \& preprocessing pipeline (\texttt{yfinance});
+  feature engineering (RSI, moving averages, normalisation);
+  \texttt{TradingEnv} (Gym-style) environment design and testing. \\[6pt]
+Fei Xin &
+  Evaluation framework (Sharpe ratio, max drawdown, cumulative return);
+  visualisation of training curves and portfolio performance;
+  project report and presentation slides. \\[4pt]
+\midrule
+\textbf{All members} &
+  Final video presentation (each member presents their own contribution). \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\vspace{2em}
+\noindent\textbf{Signatures:}
+
+\vspace{2.5em}
+\noindent
+\begin{tabular}{p{7cm} p{1cm} p{7cm}}
+\underline{\hspace{7cm}} & & \underline{\includegraphics[height=1.2cm]{YF_signature.png}\hspace{2.8cm}} \\[3pt]
+Rutwik Shrikant Dharanappagoudar \hfill Date: \underline{\hspace{2.5cm}} & &
+Zhu Yufan \hfill Date: 08/03/2026 \\[3em]
+\underline{\hspace{7cm}} & & \\[3pt]
+Fei Xin \hfill Date: \underline{\hspace{2.5cm}} & & \\
+\end{tabular}
+
+\end{document}
