@@ -58,6 +58,17 @@ All features are z-score normalised using \textbf{training-set statistics only} 
   \label{fig:data}
 \end{figure*}
 
+Figure~\ref{fig:corr} shows the Pearson correlation between all 9 features. Most pairs exhibit low correlation, confirming that each indicator captures distinct market signals. The strongest correlations are between BB Width and ATR (0.63), which is expected as both measure volatility, and between the two MA deviations (0.45).
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\columnwidth]{results/feature_correlation.png}
+  \caption{Feature correlation matrix on the AAPL training set. Low cross-correlation indicates complementary signals.}
+  \label{fig:corr}
+\end{figure}
+
+The full technical indicator time series and feature distribution comparisons across splits are provided in Appendix~\ref{app:data} (Figures~\ref{fig:indicators} and~\ref{fig:distributions}).
+
 %====================================================================
 \section{Environment Design}
 %====================================================================
@@ -129,6 +140,8 @@ Max DD          & $-$25.6\% & $-$27.1\% & $-$28.3\% \\
 \end{tabular}
 \end{table}
 
+A detailed episode walkthrough showing position decisions, cumulative reward, and trade markers is provided in Appendix~\ref{app:results} (Figure~\ref{fig:walkthrough}).
+
 DQN outperforms buy-and-hold on all metrics---higher return, better Sharpe, and lower drawdown---showing it learned to go flat or short during downturns and long during rallies.
 DDQN matches buy-and-hold with slightly lower drawdown; its conservative Q-estimates reduce both upside and downside.
 DQN's mild overestimation leads to more decisive positioning, which benefits when momentum signals are genuine.
@@ -180,5 +193,40 @@ H.~van Hasselt et al., ``Deep reinforcement learning with double Q-learning,'' \
 \bibitem{yang2020}
 H.~Yang et al., ``Deep reinforcement learning for automated stock trading: An ensemble strategy,'' \emph{ACM ICAIF}, 2020.
 \end{thebibliography}
+
+%====================================================================
+\appendix
+\onecolumn
+
+%====================================================================
+\section{Data Pipeline Visualisations}
+\label{app:data}
+%====================================================================
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.95\textwidth]{results/technical_indicators.png}
+  \caption{Technical indicator time series for AAPL (2009--2024). From top: close price, MA deviations, RSI \& MACD, Bollinger width \& ATR, volume \& OBV. Dashed lines mark train/val/test boundaries.}
+  \label{fig:indicators}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.95\textwidth]{results/feature_distributions.png}
+  \caption{Feature distributions across train/val/test splits (z-score normalised using training-set statistics only). Overlapping distributions confirm consistent normalisation without look-ahead bias.}
+  \label{fig:distributions}
+\end{figure}
+
+%====================================================================
+\section{Episode Walkthrough}
+\label{app:results}
+%====================================================================
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.95\textwidth]{results/episode_walkthrough.png}
+  \caption{DQN test episode walkthrough on AAPL. Top: portfolio value vs buy-and-hold. Second: position colour bands (green=long, gold=flat, red=short). Third: cumulative reward. Bottom: buy/sell markers on close price.}
+  \label{fig:walkthrough}
+\end{figure}
 
 \end{document}
