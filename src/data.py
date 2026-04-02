@@ -1,5 +1,9 @@
 """
-Data pipeline: download DJIA stocks, compute technical indicators, split chronologically.
+Data pipeline: load DJIA stocks from Kaggle dataset, compute technical indicators,
+split chronologically.
+
+Dataset: alincijov/trading (Kaggle) — 30 DJIA tickers, 2009-01-02 to 2020-08-17,
+daily OHLCV data in long format.
 
 Features computed per ticker:
   - Daily return (pct_change)
@@ -16,11 +20,9 @@ Raw returns and close prices are kept as separate columns for reward/portfolio c
 """
 import numpy as np
 import pandas as pd
-import yfinance as yf
+import kagglehub
 
 TICKERS = ["AAPL", "MSFT", "JPM", "JNJ", "XOM", "GS", "HD", "MCD", "V", "DIS"]
-START = "2009-01-01"
-END = "2024-12-31"
 
 # Features used by the agent network (will be z-score normalised)
 FEATURE_COLS = [
@@ -29,39 +31,28 @@ FEATURE_COLS = [
 ]
 
 
-def download(tickers=TICKERS, start=START, end=END):
-    """Download daily OHLCV data from Yahoo Finance.
+def download(tickers=TICKERS):
+    """Load daily OHLCV data from the Kaggle alincijov/trading dataset.
 
-    Returns (close, high, low, volume) DataFrames with ticker columns.
+    Returns (close, high, low, volume) DataFrames with ticker columns,
+    indexed by date. Covers 2009-01-02 to 2020-08-17.
     """
-    raw = yf.download(tickers, start=start, end=end, auto_adjust=True, progress=False)
+    path = kagglehub.dataset_download("alincijov/trading")
+    df = pd.read_csv(f"{path}/trading.csv")
 
-    # Handle yfinance multi-level column index for single-ticker lists
-    if len(tickers) == 1:
-        close = raw["Close"].dropna()
-        high = raw["High"].dropna()
-        low = raw["Low"].dropna()
-        volume = raw["Volume"].dropna()
-        if isinstance(close, pd.Series):
-            close = close.to_frame(name=tickers[0])
-            high = high.to_frame(name=tickers[0])
-            low = low.to_frame(name=tickers[0])
-            volume = volume.to_frame(name=tickers[0])
-        elif hasattr(close.columns, 'droplevel'):
-            try:
-                close.columns = close.columns.droplevel(0)
-                high.columns = high.columns.droplevel(0)
-                low.columns = low.columns.droplevel(0)
-                volume.columns = volume.columns.droplevel(0)
-            except Exception:
-                pass
-    else:
-        close = raw["Close"].dropna()
-        high = raw["High"].dropna()
-        low = raw["Low"].dropna()
-        volume = raw["Volume"].dropna()
+    # Parse YYYYMMDD integer date column
+    df["date"] = pd.to_datetime(df["datadate"].astype(str), format="%Y%m%d")
+    df = df[df["tic"].isin(tickers)].copy()
 
-    return close, high, low, volume
+    # Pivot from long format to wide (one column per ticker)
+    close  = df.pivot(index="date", columns="tic", values="adjcp")[tickers].dropna()
+    high   = df.pivot(index="date", columns="tic", values="high")[tickers].dropna()
+    low    = df.pivot(index="date", columns="tic", values="low")[tickers].dropna()
+    volume = df.pivot(index="date", columns="tic", values="volume")[tickers].dropna()
+
+    # Align all to the same dates
+    idx = close.index.intersection(high.index).intersection(low.index).intersection(volume.index)
+    return close.loc[idx], high.loc[idx], low.loc[idx], volume.loc[idx]
 
 
 def _compute_rsi(price: pd.Series, period: int = 14) -> pd.Series:
@@ -116,7 +107,7 @@ def compute_features(
     volume: pd.DataFrame,
     short_window: int = 5,
     long_window: int = 20,
-) -> dict[str, pd.DataFrame]:
+) -> dict:
     """Compute feature DataFrame for each ticker.
 
     Parameters
@@ -196,7 +187,7 @@ def normalise(train, val, test):
 
 
 def load(ticker="AAPL", short_window=5, long_window=20):
-    """Download data for a single ticker, compute features, split, and normalise."""
+    """Load data for a single ticker, compute features, split, and normalise."""
     close, high, low, volume = download([ticker])
     feats = compute_features(close, high, low, volume,
                              short_window=short_window, long_window=long_window)
@@ -206,7 +197,7 @@ def load(ticker="AAPL", short_window=5, long_window=20):
 
 
 def load_all(tickers=TICKERS, short_window=5, long_window=20):
-    """Download all tickers at once, compute features, split, and normalise each.
+    """Load all tickers at once, compute features, split, and normalise each.
 
     Returns dict[ticker, (train_df, val_df, test_df)].
     """

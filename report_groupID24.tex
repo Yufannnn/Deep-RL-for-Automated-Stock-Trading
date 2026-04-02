@@ -38,7 +38,7 @@ The goal is to deeply understand DRL by designing and analysing these algorithms
 \section{Data}
 %====================================================================
 
-We download daily OHLCV data via \texttt{yfinance} for DJIA stocks from 2009--2024 (${\sim}4{,}000$ days per ticker), split chronologically into 70\%/15\%/15\% train/val/test sets.
+We use the \texttt{alincijov/trading} Kaggle dataset, which provides daily OHLCV data for 30 DJIA stocks from 2009--2020 (${\sim}2{,}900$ days per ticker), downloaded via \texttt{kagglehub}. Data is split chronologically into 70\%/15\%/15\% train/val/test sets.
 
 For each ticker we compute 9 features:
 (1)~daily return;
@@ -54,7 +54,7 @@ All features are z-score normalised using \textbf{training-set statistics only} 
 \begin{figure*}[t]
   \centering
   \includegraphics[width=0.95\textwidth]{results/data_exploration.png}
-  \caption{Left: AAPL close price (2009--2024) with train/val/test boundaries. Right: Daily return distribution showing fat tails.}
+  \caption{Left: AAPL close price (2009--2020) with train/val/test boundaries. Right: Daily return distribution showing fat tails.}
   \label{fig:data}
 \end{figure*}
 
@@ -116,7 +116,7 @@ Both use a 3-layer MLP: $10 \to 128 \to 64 \to 3$ with ReLU activations, Adam ($
 \section{Training and Results}
 %====================================================================
 
-Each agent trains for 200 episodes on the training set. Validation (greedy, $\varepsilon{=}0$) runs every 10 episodes. Both agents show clear learning, with DDQN converging slightly faster.
+Each agent trains for 200 episodes on the training set (2034 days). Validation (greedy, $\varepsilon{=}0$) runs every 10 episodes. DQN shows a clear reduction in training loss over time; DDQN convergence is noisier due to more conservative updates.
 
 \begin{figure*}[t]
   \centering
@@ -127,24 +127,27 @@ Each agent trains for 200 episodes on the training set. Validation (greedy, $\va
 
 \begin{table}[H]
 \centering
-\caption{Test performance on AAPL (601 days, 2022--2024).}
+\caption{Test performance on AAPL (437 days, 2018--2020).}
 \label{tab:results}
 \begin{tabular}{lccc}
 \toprule
  & \textbf{DQN} & \textbf{DDQN} & \textbf{B\&H} \\
 \midrule
-Cum.\ Return   & +90.2\%   & +49.6\%   & +50.8\% \\
-Sharpe          & 1.23      & 0.81      & 0.82    \\
-Max DD          & $-$25.6\% & $-$27.1\% & $-$28.3\% \\
+Cum.\ Return   & +49.6\%   & $-$6.7\%  & +159.0\% \\
+Sharpe          & 0.84      & 0.03      & 1.65    \\
+Max DD          & $-$32.4\% & $-$38.7\% & $-$31.4\% \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 A detailed episode walkthrough showing position decisions, cumulative reward, and trade markers is provided in Appendix~\ref{app:results} (Figure~\ref{fig:walkthrough}).
 
-DQN outperforms buy-and-hold on all metrics---higher return, better Sharpe, and lower drawdown---showing it learned to go flat or short during downturns and long during rallies.
-DDQN matches buy-and-hold with slightly lower drawdown; its conservative Q-estimates reduce both upside and downside.
-DQN's mild overestimation leads to more decisive positioning, which benefits when momentum signals are genuine.
+The test period (2018--2020) includes the COVID-19 market crash of early 2020, making it a severe out-of-sample stress test.
+Buy-and-hold benefits strongly from AAPL's long-term appreciation (${\sim}3\times$ over the period), which is difficult to replicate through active trading.
+DQN achieves a positive cumulative return of +49.6\% but falls short of the buy-and-hold baseline, suggesting the agent partially learns to avoid the worst drawdowns but cannot fully capture the sustained uptrend.
+DDQN underperforms, ending with a slight loss; its conservative Q-value estimates lead to excessive caution and missed long positions during the recovery.
+Both agents exhibit higher max drawdown than buy-and-hold, indicating the reward shaping was insufficient to fully protect against the sudden crash.
+These results highlight a fundamental challenge in RL-based trading: a strong passive baseline driven by secular growth is hard to beat with short-horizon signals alone.
 
 %====================================================================
 \section{Challenges}
@@ -206,7 +209,7 @@ H.~Yang et al., ``Deep reinforcement learning for automated stock trading: An en
 \begin{figure}[H]
   \centering
   \includegraphics[width=0.95\textwidth]{results/technical_indicators.png}
-  \caption{Technical indicator time series for AAPL (2009--2024). From top: close price, MA deviations, RSI \& MACD, Bollinger width \& ATR, volume \& OBV. Dashed lines mark train/val/test boundaries.}
+  \caption{Technical indicator time series for AAPL (2009--2020). From top: close price, MA deviations, RSI \& MACD, Bollinger width \& ATR, volume \& OBV. Dashed lines mark train/val/test boundaries.}
   \label{fig:indicators}
 \end{figure}
 

@@ -67,7 +67,7 @@ def fig2_technical_indicators(train_df, val_df, test_df):
     # Panel 1: Close price
     axes[0].plot(full["close"].values, color="steelblue", linewidth=0.8)
     axes[0].set_ylabel("Price (USD)")
-    axes[0].set_title("AAPL Technical Indicators (2009-2024)", fontsize=13)
+    axes[0].set_title("AAPL Technical Indicators (2009-2020)", fontsize=13)
 
     # Panel 2: MA deviations
     axes[1].plot(full["dev5"].values, color="tab:blue", linewidth=0.6, alpha=0.8, label="MA5 Dev")

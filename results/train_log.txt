@@ -1,0 +1,80 @@
+Downloading and preparing data...
+Warning: Looks like you're using an outdated `kagglehub` version, please consider updating (latest version: 1.0.0)
+Data ready: train=2034, val=436, test=437
+
+============================================================
+  Training DQN on AAPL | 200 episodes | cuda
+============================================================
+  Ep   10/200 | reward=-678.9710 | val_sharpe=-0.513 | val_return=-16.64% | eps=0.904
+  Ep   20/200 | reward=-642.7334 | val_sharpe=-1.819 | val_return=-46.68% | eps=0.807
+  Ep   30/200 | reward=-606.7456 | val_sharpe=-0.871 | val_return=-26.92% | eps=0.711
+  Ep   40/200 | reward=-461.7666 | val_sharpe=-0.838 | val_return=-26.53% | eps=0.614
+  Ep   50/200 | reward=-412.7696 | val_sharpe=-0.421 | val_return=-16.88% | eps=0.517
+  Ep   60/200 | reward=-597.4243 | val_sharpe=+0.316 | val_return=+7.75% | eps=0.421
+  Ep   70/200 | reward=-476.6793 | val_sharpe=+0.156 | val_return=+1.90% | eps=0.324
+  Ep   80/200 | reward=-367.8409 | val_sharpe=-0.611 | val_return=-19.34% | eps=0.228
+  Ep   90/200 | reward=-360.0184 | val_sharpe=-0.442 | val_return=-14.88% | eps=0.131
+  Ep  100/200 | reward=-140.6488 | val_sharpe=-1.606 | val_return=-48.47% | eps=0.050
+  Ep  110/200 | reward=-243.9924 | val_sharpe=+0.463 | val_return=+14.15% | eps=0.050
+  Ep  120/200 | reward=-152.6038 | val_sharpe=+0.267 | val_return=+6.09% | eps=0.050
+  Ep  130/200 | reward=-271.6305 | val_sharpe=-1.105 | val_return=-24.79% | eps=0.050
+  Ep  140/200 | reward=-285.6245 | val_sharpe=+1.187 | val_return=+42.84% | eps=0.050
+  Ep  150/200 | reward=-171.6365 | val_sharpe=+0.705 | val_return=+24.71% | eps=0.050
+  Ep  160/200 | reward=-345.4837 | val_sharpe=-0.481 | val_return=-18.74% | eps=0.050
+  Ep  170/200 | reward=-119.0723 | val_sharpe=-1.063 | val_return=-33.87% | eps=0.050
+  Ep  180/200 | reward=-245.3416 | val_sharpe=-0.621 | val_return=-17.47% | eps=0.050
+  Ep  190/200 | reward=-268.1005 | val_sharpe=+0.204 | val_return=+3.67% | eps=0.050
+  Ep  200/200 | reward=-164.9531 | val_sharpe=+0.893 | val_return=+30.43% | eps=0.050
+
+  --------------------------------------------------
+  TEST RESULTS (DQN on AAPL)
+  --------------------------------------------------
+  Metric                      Agent   Buy&Hold
+  --------------------------------------------------
+  cumulative_return         +0.4962    +1.5903
+  sharpe                    +0.8444    +1.6511
+  max_drawdown              -0.3237    -0.3143
+
+  Model saved: /home/zhuyf/workspace/Deep-RL-for-Automated-Stock-Trading/results/dqn_AAPL.pt
+
+============================================================
+  Training DDQN on AAPL | 200 episodes | cuda
+============================================================
+  Ep   10/200 | reward=-351.6219 | val_sharpe=-0.318 | val_return=-12.79% | eps=0.904
+  Ep   20/200 | reward=-330.1000 | val_sharpe=-0.072 | val_return=-5.64% | eps=0.807
+  Ep   30/200 | reward=-575.8914 | val_sharpe=+0.209 | val_return=+3.84% | eps=0.711
+  Ep   40/200 | reward=-510.7114 | val_sharpe=-1.347 | val_return=-37.93% | eps=0.614
+  Ep   50/200 | reward=-688.2103 | val_sharpe=-0.870 | val_return=-29.44% | eps=0.517
+  Ep   60/200 | reward=-269.5517 | val_sharpe=-0.419 | val_return=-14.69% | eps=0.421
+  Ep   70/200 | reward=-472.6268 | val_sharpe=-0.532 | val_return=-16.62% | eps=0.324
+  Ep   80/200 | reward=-708.5638 | val_sharpe=-0.361 | val_return=-11.97% | eps=0.228
+  Ep   90/200 | reward=-553.8824 | val_sharpe=-0.182 | val_return=-7.63% | eps=0.131
+  Ep  100/200 | reward=-349.3299 | val_sharpe=-0.251 | val_return=-8.70% | eps=0.050
+  Ep  110/200 | reward=-315.5921 | val_sharpe=+0.626 | val_return=+17.79% | eps=0.050
+  Ep  120/200 | reward=-248.9946 | val_sharpe=-0.384 | val_return=-13.23% | eps=0.050
+  Ep  130/200 | reward=-355.8136 | val_sharpe=-0.471 | val_return=-18.89% | eps=0.050
+  Ep  140/200 | reward=-404.2555 | val_sharpe=-0.016 | val_return=-4.37% | eps=0.050
+  Ep  150/200 | reward=-386.8712 | val_sharpe=-0.428 | val_return=-15.80% | eps=0.050
+  Ep  160/200 | reward=-439.6433 | val_sharpe=-0.319 | val_return=-13.52% | eps=0.050
+  Ep  170/200 | reward=-217.6307 | val_sharpe=+0.092 | val_return=+0.27% | eps=0.050
+  Ep  180/200 | reward=-319.8940 | val_sharpe=-1.116 | val_return=-31.07% | eps=0.050
+  Ep  190/200 | reward=-457.9765 | val_sharpe=-0.984 | val_return=-25.95% | eps=0.050
+  Ep  200/200 | reward=-208.7673 | val_sharpe=-1.910 | val_return=-46.24% | eps=0.050
+
+  --------------------------------------------------
+  TEST RESULTS (DDQN on AAPL)
+  --------------------------------------------------
+  Metric                      Agent   Buy&Hold
+  --------------------------------------------------
+  cumulative_return         -0.0671    +1.5903
+  sharpe                    +0.0288    +1.6511
+  max_drawdown              -0.3874    -0.3143
+
+  Model saved: /home/zhuyf/workspace/Deep-RL-for-Automated-Stock-Trading/results/ddqn_AAPL.pt
+
+  Plot saved: /home/zhuyf/workspace/Deep-RL-for-Automated-Stock-Trading/results/results_AAPL.png
+
+============================================================
+  All done! Check results/ for plots and saved models.
+============================================================
+
