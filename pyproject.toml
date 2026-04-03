@@ -11,7 +11,9 @@ dependencies = [
     "torch",
     "yfinance",
     "scikit-learn",
-    "ipykernel"
+    "ipykernel",
+    "kagglehub",
+    "statsmodels"
 ]
 
 [tool.uv]

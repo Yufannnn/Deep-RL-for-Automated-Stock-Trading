@@ -33,8 +33,8 @@ TRAIN_DRAWDOWN_PENALTY = 0.0
 
 
 def default_device():
-    # if torch.cuda.is_available():
-    #     return "cuda"
+    if torch.cuda.is_available():
+        return "cuda"
     # if torch.mps.is_available():
     #     return "mps"
     return "cpu"

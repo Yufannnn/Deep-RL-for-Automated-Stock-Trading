@@ -56,6 +56,10 @@ jupyter-core==5.9.1
     # via
     #   ipykernel
     #   jupyter-client
+kagglehub==1.0.0
+    # via deep-rl-for-automated-stock-trading (pyproject.toml)
+kagglesdk==0.1.16
+    # via kagglehub
 kiwisolver==1.5.0
     # via matplotlib
 markupsafe==3.0.3
@@ -80,19 +84,26 @@ numpy==2.4.4
     #   contourpy
     #   matplotlib
     #   pandas
+    #   patsy
     #   scikit-learn
     #   scipy
+    #   statsmodels
     #   yfinance
 packaging==26.0
     # via
     #   ipykernel
+    #   kagglehub
     #   matplotlib
+    #   statsmodels
 pandas==3.0.2
     # via
     #   deep-rl-for-automated-stock-trading (pyproject.toml)
+    #   statsmodels
     #   yfinance
 parso==0.8.6
     # via jedi
+patsy==1.0.2
+    # via statsmodels
 peewee==4.0.4
     # via yfinance
 pexpect==4.9.0
@@ -106,7 +117,9 @@ platformdirs==4.9.4
 prompt-toolkit==3.0.52
     # via ipython
 protobuf==7.34.1
-    # via yfinance
+    # via
+    #   kagglesdk
+    #   yfinance
 psutil==7.2.2
     # via ipykernel
 ptyprocess==0.7.0
@@ -128,16 +141,23 @@ python-dateutil==2.9.0.post0
     #   pandas
 pytz==2026.1.post1
     # via yfinance
+pyyaml==6.0.3
+    # via kagglehub
 pyzmq==27.1.0
     # via
     #   ipykernel
     #   jupyter-client
 requests==2.33.1
-    # via yfinance
+    # via
+    #   kagglehub
+    #   kagglesdk
+    #   yfinance
 scikit-learn==1.8.0
     # via deep-rl-for-automated-stock-trading (pyproject.toml)
 scipy==1.17.1
-    # via scikit-learn
+    # via
+    #   scikit-learn
+    #   statsmodels
 setuptools==81.0.0
     # via torch
 six==1.17.0
@@ -146,6 +166,8 @@ soupsieve==2.8.3
     # via beautifulsoup4
 stack-data==0.6.3
     # via ipython
+statsmodels==0.14.6
+    # via deep-rl-for-automated-stock-trading (pyproject.toml)
 sympy==1.14.0
     # via torch
 threadpoolctl==3.6.0
@@ -156,6 +178,8 @@ tornado==6.5.5
     # via
     #   ipykernel
     #   jupyter-client
+tqdm==4.67.3
+    # via kagglehub
 traitlets==5.14.3
     # via
     #   ipykernel
