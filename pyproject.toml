@@ -1,0 +1,18 @@
+[project]
+name = "deep-rl-for-automated-stock-trading"
+version = "0.1.0"
+description = "Single-asset DQN/DDQN stock trading project with deterministic evaluation."
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "numpy",
+    "pandas",
+    "matplotlib",
+    "torch",
+    "yfinance",
+    "scikit-learn",
+    "ipykernel"
+]
+
+[tool.uv]
+package = false
