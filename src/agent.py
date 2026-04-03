@@ -1,6 +1,7 @@
 """
 DQN and DDQN agents implemented from scratch in PyTorch.
 """
+import math
 import random
 from collections import deque
 
@@ -8,7 +9,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-
 
 # ─── Network ─────────────────────────────────────────────────────────────────
 
@@ -58,14 +58,14 @@ class DQNAgent:
         self,
         state_dim: int,
         action_dim: int,
-        lr: float = 1e-3,
+        lr: float = 5e-4,
         gamma: float = 0.99,
         epsilon_start: float = 1.0,
-        epsilon_end: float = 0.05,
-        epsilon_decay: int = 200_000,
-        batch_size: int = 64,
+        epsilon_end: float = 0.02,
+        epsilon_decay: int = 20_000,
+        batch_size: int = 128,
         target_update: int = 100,
-        buffer_size: int = 10_000,
+        buffer_size: int = 50_000,
         device: str = "cpu",
         double: bool = False,
     ):
@@ -89,16 +89,23 @@ class DQNAgent:
         self.optimizer = optim.Adam(self.policy_net.parameters(), lr=lr)
         self.buffer = ReplayBuffer(buffer_size)
 
-    def select_action(self, state: np.ndarray) -> int:
-        self.epsilon = max(
-            self.epsilon_end,
-            self.epsilon_start - (self.epsilon_start - self.epsilon_end) * self.steps / self.epsilon_decay
-        )
-        if random.random() < self.epsilon:
-            return random.randrange(self.action_dim)
+    def current_epsilon(self) -> float:
+        decay_rate = max(self.epsilon_decay, 1)
+        return self.epsilon_end + (self.epsilon_start - self.epsilon_end) * math.exp(-self.steps / decay_rate)
+
+    def greedy_action(self, state: np.ndarray) -> int:
         with torch.no_grad():
             s = torch.tensor(state, dtype=torch.float32, device=self.device).unsqueeze(0)
             return int(self.policy_net(s).argmax(dim=1).item())
+
+    def select_action(self, state: np.ndarray, greedy: bool = False) -> int:
+        if greedy:
+            return self.greedy_action(state)
+
+        self.epsilon = self.current_epsilon()
+        if random.random() < self.epsilon:
+            return random.randrange(self.action_dim)
+        return self.greedy_action(state)
 
     def push(self, *args):
         self.buffer.push(*args)
@@ -108,11 +115,12 @@ class DQNAgent:
             return None
 
         s, a, r, s2, d = self.buffer.sample(self.batch_size)
+        r = np.clip(r, -1.0, 1.0)
         s  = torch.tensor(s,  device=self.device)
         a  = torch.tensor(a,  device=self.device)
         r  = torch.tensor(r,  device=self.device)
         s2 = torch.tensor(s2, device=self.device)
-        d  = torch.tensor(d,  device=self.device)
+        d = torch.tensor(d, device=self.device).float().clamp(0, 1)
 
         q_values = self.policy_net(s).gather(1, a.unsqueeze(1)).squeeze(1)
 
@@ -125,15 +133,16 @@ class DQNAgent:
                 q_next = self.target_net(s2).max(dim=1).values
             q_target = r + self.gamma * q_next * (1 - d)
 
-        loss = nn.functional.mse_loss(q_values, q_target)
+        loss = nn.functional.smooth_l1_loss(q_values, q_target)
         self.optimizer.zero_grad()
         loss.backward()
         nn.utils.clip_grad_norm_(self.policy_net.parameters(), 1.0)
         self.optimizer.step()
 
         self.steps += 1
-        if self.steps % self.target_update == 0:
-            self.target_net.load_state_dict(self.policy_net.state_dict())
+        tau = 0.005
+        for target_param, param in zip(self.target_net.parameters(), self.policy_net.parameters()):
+            target_param.data.copy_(tau * param.data + (1.0 - tau) * target_param.data)
 
         return loss.item()
 

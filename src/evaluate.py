@@ -6,13 +6,16 @@ import numpy as np
 import pandas as pd
 
 
-def run_episode(agent, env, train=False):
+def run_episode(agent, env, train=False, greedy=False, reset_kwargs=None):
     """Run one episode. If train=True, collect experience and update."""
-    state = env.reset()
+    if reset_kwargs is None:
+        reset_kwargs = {}
+
+    state = env.reset(**reset_kwargs)
     total_reward = 0.0
 
     while True:
-        action = agent.select_action(state)
+        action = agent.select_action(state, greedy=greedy)
         next_state, reward, done, info = env.step(action)
         if train:
             agent.push(state, action, reward, next_state, float(done))
@@ -45,9 +48,6 @@ def buy_and_hold(df: pd.DataFrame):
 
 
 def greedy_episode(agent, env):
-    """Run episode with epsilon=0 (pure exploitation)."""
-    old_eps = agent.epsilon
-    agent.epsilon = 0.0
-    _, portfolio = run_episode(agent, env, train=False)
-    agent.epsilon = old_eps
+    """Run deterministic full-horizon evaluation with pure exploitation."""
+    _, portfolio = run_episode(agent, env, train=False, greedy=True, reset_kwargs={"random_start": False, "start_index": 0})
     return portfolio
