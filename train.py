@@ -165,6 +165,11 @@ def plot_results(ticker, results, test_df, baseline_portfolios=None):
     # Test portfolio
     bnh_port = test_df["close"].values / test_df["close"].values[0]
     axes[1].plot(bnh_port, label="Buy & Hold", linestyle="--", color="gray", linewidth=2)
+    if baseline_portfolios:
+        for name, portfolio in baseline_portfolios.items():
+            if name == "buy_and_hold":
+                continue
+            axes[1].plot(portfolio, label=name.upper(), linestyle=":", linewidth=2)
     colors = ["tab:blue", "tab:orange"]
     for i, (name, (_, _, port_agent, _, _, _)) in enumerate(results.items()):
         axes[1].plot(port_agent, label=name.upper(), color=colors[i % 2], linewidth=2)

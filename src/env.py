@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 TradingEnv: Gym-compatible single-asset trading environment.
 
