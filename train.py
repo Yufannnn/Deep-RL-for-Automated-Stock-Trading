@@ -33,10 +33,10 @@ TRAIN_DRAWDOWN_PENALTY = 0.0
 
 
 def default_device():
-    if torch.cuda.is_available():
-        return "cuda"
-    if getattr(torch.backends, "mps", None) is not None and torch.backends.mps.is_available():
-        return "mps"
+    # if torch.cuda.is_available():
+    #     return "cuda"
+    # if torch.mps.is_available():
+    #     return "mps"
     return "cpu"
 
 
@@ -165,21 +165,6 @@ def plot_results(ticker, results, test_df, baseline_portfolios=None):
     # Test portfolio
     bnh_port = test_df["close"].values / test_df["close"].values[0]
     axes[1].plot(bnh_port, label="Buy & Hold", linestyle="--", color="gray", linewidth=2)
-    if baseline_portfolios is not None:
-        highlight_baselines = [
-            ("arima", "tab:green"),
-            ("random_forest", "tab:red"),
-            ("momentum", "tab:purple"),
-        ]
-        for name, color in highlight_baselines:
-            if name in baseline_portfolios:
-                axes[1].plot(
-                    baseline_portfolios[name],
-                    label=name.replace("_", " ").title(),
-                    linestyle=":",
-                    color=color,
-                    linewidth=1.8,
-                )
     colors = ["tab:blue", "tab:orange"]
     for i, (name, (_, _, port_agent, _, _, _)) in enumerate(results.items()):
         axes[1].plot(port_agent, label=name.upper(), color=colors[i % 2], linewidth=2)

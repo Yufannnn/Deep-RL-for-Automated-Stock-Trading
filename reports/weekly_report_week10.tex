@@ -1,0 +1,77 @@
+\documentclass[11pt,twocolumn]{article}
+\usepackage[margin=2.2cm]{geometry}
+\usepackage{times}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{float}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{enumitem}
+
+\hypersetup{colorlinks=true, urlcolor=blue, linkcolor=blue, citecolor=blue}
+
+\title{\textbf{Deep RL for Automated Stock Trading}\\[4pt]
+\large Weekly Progress Report --- Week 10}
+\author{
+Rutwik Shrikant \quad
+Zhu Yufan \quad
+Fei Xin
+}
+\date{Semester 2, 2025/26}
+
+\begin{document}
+\maketitle
+
+%====================================================================
+\section{Summary}
+%====================================================================
+
+This week has focused on implementing the learning algorithms themselves. With the data pipeline and environment available, we have built DQN and DDQN agents from scratch in PyTorch and connected them to a full training loop.
+
+%====================================================================
+\section{DQN Implementation}
+%====================================================================
+
+We have implemented a feedforward Q-network that maps the environment state to Q-values for the discrete trading actions. The model uses a simple multilayer perceptron:
+\begin{equation}
+  10 \rightarrow 128 \rightarrow 64 \rightarrow 3
+\end{equation}
+with ReLU activations.
+
+We have also implemented the standard components required by DQN: a replay buffer, an online policy network, a target network, TD-loss optimisation with Adam, $\varepsilon$-greedy exploration, and gradient clipping. The replay buffer helps stabilise updates by reducing temporal correlation between transitions, while the target network makes TD targets less volatile during training. By the end of the week, the DQN pipeline has been able to collect experience, sample batches, and update Q-values consistently without crashing.
+
+%====================================================================
+\section{DDQN Extension}
+%====================================================================
+
+After the baseline DQN agent was working, we implemented Double DQN (DDQN). The main modification was to decouple action selection and target evaluation:
+\begin{equation}
+  y_t = r + \gamma Q_{\bar{\theta}}(s', \arg\max_a Q_\theta(s', a))
+\end{equation}
+
+This is intended to reduce the overestimation bias commonly observed in vanilla DQN. The DDQN implementation reuses most of the DQN code and changes only the target calculation logic, which made it a natural extension once the first agent was functioning.
+
+%====================================================================
+\section{Training and Evaluation Pipeline}
+%====================================================================
+
+We have also built a complete training script that loads and splits a ticker dataset, initialises the environment and agent, runs training episodes, evaluates the current policy on validation data, compares against a buy-and-hold baseline, and saves trained model weights and plots.
+
+At this stage, the main focus has been functional correctness rather than final performance. The goal this week has been to confirm that the agents can interact with the environment, accumulate transitions, update Q-values, and produce sensible portfolio traces. We have now reached the point where the full DQN/DDQN pipeline is operational end to end, even though the policies themselves still need substantial tuning.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\columnwidth]{../results/results_AAPL.png}
+  \caption{Example training/evaluation output generated after integrating DQN/DDQN with the environment.}
+  \label{fig:week10_train}
+\end{figure}
+
+%====================================================================
+\section{Next Steps}
+%====================================================================
+
+With the core algorithms now working, the next step for the coming week is to improve performance. This will involve revisiting reward shaping, environment dynamics, evaluation correctness, checkpoint selection, and training stability so that the reported results better reflect the actual quality of the learned policy.
+
+\end{document}

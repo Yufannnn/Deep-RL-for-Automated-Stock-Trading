@@ -13,6 +13,7 @@ __pycache__/
 # IDE
 .vscode/
 .claude/
+.DS_Store
 
 # Large/binary files not needed in repo
 admin_week05.pdf

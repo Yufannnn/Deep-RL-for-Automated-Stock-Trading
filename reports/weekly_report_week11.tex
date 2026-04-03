@@ -1,0 +1,80 @@
+\documentclass[11pt,twocolumn]{article}
+\usepackage[margin=2.2cm]{geometry}
+\usepackage{times}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{float}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{enumitem}
+
+\hypersetup{colorlinks=true, urlcolor=blue, linkcolor=blue, citecolor=blue}
+
+\title{\textbf{Deep RL for Automated Stock Trading}\\[4pt]
+\large Weekly Progress Report --- Week 11}
+\author{
+Rutwik Shrikant \quad
+Zhu Yufan \quad
+Fei Xin
+}
+\date{Semester 2, 2025/26}
+
+\begin{document}
+\maketitle
+
+%====================================================================
+\section{Summary}
+%====================================================================
+
+This week has been dedicated to improving agent performance and making evaluation trustworthy. The earlier system has already been functional, but learning has remained unstable and reported results have been sensitive to reward design, action semantics, and checkpoint choice. This week has therefore focused on turning the prototype into a more reliable trading agent.
+
+%====================================================================
+\section{Evaluation and Training Fixes}
+%====================================================================
+
+We have first corrected the evaluation path so that validation and test runs are deterministic and truly greedy. This ensures that the measured performance reflects the learned policy rather than accidental exploration. We have also improved reproducibility by adding explicit global seeding, which has made training runs much easier to compare during iterative tuning.
+
+Another important change this week has been model selection. Instead of evaluating only the final training checkpoint, we now track validation performance and restore the best checkpoint before testing. This prevents late-training degradation from hiding a stronger intermediate policy and gives us a much fairer picture of what the agent has actually learned.
+
+%====================================================================
+\section{Environment and Policy Tuning}
+%====================================================================
+
+The main performance gains this week have come from changing the environment dynamics and constraints. In particular, we have moved from full-history training to shorter rolling sub-episodes, switched from absolute position-setting actions to incremental position changes, and limited the tuned setup to long-only trading for AAPL while retaining transaction costs and drawdown awareness to avoid unrealistic overtrading.
+
+These changes have made the learning problem noticeably more stable. In earlier versions, the agent could flip directly between short and long too easily, which created brittle and highly regime-dependent behaviour. The revised setup reduces churn and aligns better with the upward long-run trend of AAPL, which has made the training signal easier for the agent to use.
+
+%====================================================================
+\section{Observed Performance}
+%====================================================================
+
+After tuning, the best-performing agent has been DQN. On the held-out AAPL test split, the tuned DQN has achieved a cumulative return of +64.45\%, a Sharpe ratio of 0.98, and a max drawdown of -29.24\%. For comparison, the buy-and-hold baseline has achieved a cumulative return of +50.84\%, a Sharpe ratio of 0.82, and a max drawdown of -28.26\%. The tuned DDQN has also become profitable, although it remains below DQN in total return. At the end of this week, the main lesson is that the performance bottleneck is not just the RL algorithm itself, but the interaction between reward design, action space, and training procedure.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\columnwidth]{../results/results_AAPL.png}
+  \caption{Final tuned training/evaluation output on AAPL.}
+  \label{fig:week11_results}
+\end{figure}
+
+% %====================================================================
+% \section{Outputs and Progress}
+% %====================================================================
+
+% By the end of Week 8, we had:
+% \begin{itemize}[noitemsep]
+%   \item a working stock data ingestion pipeline,
+%   \item engineered technical indicators for each ticker,
+%   \item chronological data splits with leak-free normalisation,
+%   \item a first custom trading environment for RL training and evaluation.
+% \end{itemize}
+
+%====================================================================
+\section{Next Steps}
+%====================================================================
+
+Following our Week 11 discussion with the TA, the main focus for Week 12 will be to build out a stronger benchmark suite so that the RL agents can be compared against more classical trading baselines. In particular, we plan to include ARIMA, buy-and-hold, sell-and-hold where appropriate, a trend-following strategy based on moving averages, and a mean-reversion strategy based on moving averages. This should make the final comparison more convincing and help us understand more clearly where the RL agents are genuinely adding value.
+
+\end{document}
