@@ -161,6 +161,57 @@ def _save_cache(results_dir: str, ticker: str, portfolios, results) -> None:
     portfolio_df.to_csv(portfolios_path, index=False)
 
 
+def momentum_portfolio(
+    test_df: pd.DataFrame,
+    min_position: int = 0,
+    max_position: int = 1,
+    lookback: int = 20,
+) -> np.ndarray:
+    """Momentum baseline: go long when the trailing `lookback`-day return is positive."""
+    close = test_df["close"].to_numpy(dtype=np.float64)
+    portfolio = [1.0]
+    for t in range(1, len(close)):
+        start = max(0, t - lookback)
+        trailing_return = (close[t - 1] - close[start]) / (close[start] + 1e-12)
+        position = max_position if trailing_return > 0 else max(min_position, 0)
+        daily_ret = (close[t] - close[t - 1]) / (close[t - 1] + 1e-12)
+        portfolio.append(portfolio[-1] * (1.0 + position * daily_ret))
+    return np.asarray(portfolio, dtype=np.float64)
+
+
+def random_forest_portfolio(
+    train_df: pd.DataFrame,
+    val_df: pd.DataFrame,
+    test_df: pd.DataFrame,
+    min_position: int = 0,
+    max_position: int = 1,
+    n_estimators: int = 200,
+    random_state: int = 42,
+) -> np.ndarray:
+    """Random-forest baseline: train on (train+val) features, predict next-day direction on test."""
+    from sklearn.ensemble import RandomForestClassifier
+    from src.data import FEATURE_COLS
+
+    fit_df = pd.concat([train_df, val_df], ignore_index=True)
+
+    # Label: 1 if next-day return > 0, else 0
+    X_train = fit_df[FEATURE_COLS].iloc[:-1].to_numpy()
+    y_train = (fit_df["raw_return"].shift(-1).iloc[:-1].to_numpy() > 0).astype(int)
+
+    clf = RandomForestClassifier(n_estimators=n_estimators, random_state=random_state, n_jobs=-1)
+    clf.fit(X_train, y_train)
+
+    test_returns = test_df["raw_return"].to_numpy(dtype=np.float64)
+    X_test = test_df[FEATURE_COLS].to_numpy()
+    predictions = clf.predict(X_test)
+
+    portfolio = [1.0]
+    for t in range(1, len(test_returns)):
+        position = max_position if predictions[t - 1] == 1 else max(min_position, 0)
+        portfolio.append(portfolio[-1] * (1.0 + position * test_returns[t]))
+    return np.asarray(portfolio, dtype=np.float64)
+
+
 def run_all_baselines(
     train_df: pd.DataFrame,
     val_df: pd.DataFrame,
@@ -179,6 +230,18 @@ def run_all_baselines(
     portfolios = {
         "buy_and_hold": buy_and_hold_portfolio(test_df),
         "arima": arima_portfolio(
+            train_df,
+            val_df,
+            test_df,
+            min_position=min_position,
+            max_position=max_position,
+        ),
+        "momentum": momentum_portfolio(
+            test_df,
+            min_position=min_position,
+            max_position=max_position,
+        ),
+        "random_forest": random_forest_portfolio(
             train_df,
             val_df,
             test_df,

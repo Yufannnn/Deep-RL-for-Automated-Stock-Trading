@@ -9,6 +9,8 @@
 \usepackage{caption}
 \usepackage{subcaption}
 
+\graphicspath{{../}}
+
 \hypersetup{colorlinks=true, urlcolor=blue, linkcolor=blue, citecolor=blue}
 
 \title{\textbf{Deep RL for Automated Stock Trading}\\[4pt]
@@ -75,32 +77,36 @@ The full technical indicator time series and feature distribution comparisons ac
 
 We implement a Gym-style \texttt{TradingEnv} for single-asset trading.
 The state $s_t \in \mathbb{R}^{10}$ consists of 9 normalised features plus the current position $\text{pos}_t \in \{-1, 0, +1\}$.
-The agent chooses from three discrete actions: Sell ($-1$), Hold ($0$), Buy ($+1$).
+The agent chooses from three discrete \emph{delta} actions: Decrease ($-1$), Hold ($0$), Increase ($+1$), which increment or decrement the position by one unit, clamped to $[\text{pos}_{\min}, \text{pos}_{\max}]$.
+This formulation makes partial transitions natural and prevents abrupt position reversals.
 
-The reward combines PnL, transaction costs, and a drawdown penalty:
+The reward is a log-return with transaction cost and drawdown penalty:
 \begin{multline}
-  r_t = \text{pos}_t \cdot \tilde{r}_t
+  r_t = \log\!\frac{V_t}{V_{t-1}}
       - c_t \cdot \mathbf{1}[\text{pos}_t \neq \text{pos}_{t-1}] \\
       + \lambda \min\!\Bigl(0,\; \frac{V_t - V_t^{\text{peak}}}{V_t^{\text{peak}}}\Bigr)
   \label{eq:reward}
 \end{multline}
-where $\tilde{r}_t$ is the raw daily return, $\lambda = 0.5$, and $c_t$ is either a flat fee (10~bps) or proportional to position change magnitude.
-The drawdown term encourages risk-averse behaviour.
+where $\lambda = 0.5$ and $c_t$ is either a flat fee (10~bps) or proportional to position change magnitude.
+Rewards are clipped to $[-1, 1]$ for training stability.
+The log-return formulation is numerically stable and scale-invariant across tickers.
 
-Each episode spans one full data split. The environment tracks position history, trades, and portfolio value, and computes Sharpe ratio, max drawdown, and trade frequency at episode end.
+Training episodes sample a random 252-day window from the training set, providing diverse market regimes per episode. Validation and test episodes always start at index~0 for reproducibility.
+The environment tracks position history, trades, and portfolio value, and computes Sharpe ratio, max drawdown, and trade frequency at episode end.
 
 %====================================================================
 \section{Deep Learning Methods}
 %====================================================================
 
-\textbf{DQN} approximates $Q^*(s,a)$ with a neural network $Q_\theta$ trained via TD loss:
+\textbf{DQN} approximates $Q^*(s,a)$ with a neural network $Q_\theta$ trained via Huber (smooth-$\ell_1$) TD loss:
 \begin{equation}
   \mathcal{L} = \mathbb{E}_{\mathcal{D}} \!\Big[\!
-    \big( r + \gamma \max_{a'} Q_{\bar\theta}(s', a') - Q_\theta(s, a) \big)^2
+    \text{SmoothL1}\!\big( r + \gamma \max_{a'} Q_{\bar\theta}(s', a'),\; Q_\theta(s, a) \big)
   \Big]
   \label{eq:dqn}
 \end{equation}
-Key components (all from scratch): replay buffer (10K capacity, batch size 64), target network (updated every 100 steps), and linear $\varepsilon$-decay from 1.0 to 0.05 over 200K steps.
+Key components (all from scratch): replay buffer (50K capacity, batch size 128), soft target network update ($\tau{=}0.005$ per step), and exponential $\varepsilon$-decay from 1.0 to 0.02 with decay constant 20K steps.
+Rewards are clipped to $[-1,1]$ before training to bound the TD target.
 
 \textbf{DDQN} decouples action selection from evaluation to reduce overestimation:
 \begin{equation}
@@ -110,32 +116,57 @@ Key components (all from scratch): replay buffer (10K capacity, batch size 64), 
 DDQN subclasses DQN, changing only the target computation.
 
 \textbf{Architecture.}
-Both use a 3-layer MLP: $10 \to 128 \to 64 \to 3$ with ReLU activations, Adam ($\text{lr}{=}10^{-3}$), and gradient clipping (max norm 1.0).
+Both use a 3-layer MLP: $10 \to 128 \to 64 \to 3$ with ReLU activations, Adam ($\text{lr}{=}5{\times}10^{-4}$), and gradient clipping (max norm 1.0).
+
+%====================================================================
+\section{Baselines}
+%====================================================================
+
+We compare the RL agents against two classical baselines evaluated on the same test set.
+
+\textbf{Buy-and-Hold (B\&H).}
+The simplest passive strategy: buy at the start of the test period and hold until the end.
+It captures the full market trend and serves as the primary benchmark.
+
+\textbf{ARIMA(1,0,0) walk-forward.}
+At each test step $t$ we fit an AR(1) model on a rolling window of the most recent 252 daily returns (using training and validation history as a warm-up) and forecast the next return $\hat{r}_{t+1}$.
+The position is set to $+1$ (long) if $\hat{r}_{t+1} > 0$ and $0$ (flat) otherwise, matching the long-only constraint used during RL training.
+This baseline tests whether simple autoregressive structure in returns already yields useful trading signals.
+
+\textbf{Momentum (20-day).}
+At each test step the trailing 20-day cumulative return is computed as a directional signal.
+A positive trailing return triggers a long position; otherwise the agent stays flat.
+Momentum is a classic factor in financial economics and a standard weak baseline for active strategies.
+
+\textbf{Random Forest.}
+A \texttt{RandomForestClassifier} (200 trees) is trained on the full training+validation set, using the 9 z-score-normalised features to predict the binary sign of the next day's return.
+On the test set, a predicted upward day yields a long position; a predicted downward day yields a flat position.
+This baseline measures whether a supervised learning approach on the same feature set can outperform the RL agents.
 
 %====================================================================
 \section{Training and Results}
 %====================================================================
 
-Each agent trains for 200 episodes on the training set (2034 days). Validation (greedy, $\varepsilon{=}0$) runs every 10 episodes. DQN shows a clear reduction in training loss over time; DDQN convergence is noisier due to more conservative updates.
+Each agent trains for 200 episodes, each sampling a random 252-day window from the training set (2034 days) to expose the agent to diverse market regimes. Validation uses a deterministic greedy rollout (pure exploitation, from day~0) every 10 episodes; the checkpoint with the best validation score (cumulative return, then Sharpe) is restored for final test evaluation. DQN shows a clear reduction in training loss over time; DDQN convergence is noisier due to more conservative Q-value estimates.
 
 \begin{figure*}[t]
   \centering
   \includegraphics[width=0.95\textwidth]{results/results_AAPL.png}
-  \caption{Left: Training reward (20-episode moving average). Right: Test portfolio value for DQN, DDQN, and buy-and-hold.}
+  \caption{Left: Training reward (20-episode moving average). Right: Test portfolio value for DQN, DDQN, buy-and-hold, and ARIMA baseline.}
   \label{fig:training}
 \end{figure*}
 
 \begin{table}[H]
 \centering
-\caption{Test performance on AAPL (437 days, 2018--2020).}
+\caption{Test performance on AAPL (437 days, 2018--2020). ARIMA and agent numbers will be updated after retraining with the revised codebase.}
 \label{tab:results}
-\begin{tabular}{lccc}
+\begin{tabular}{lccccc}
 \toprule
- & \textbf{DQN} & \textbf{DDQN} & \textbf{B\&H} \\
+ & \textbf{DQN} & \textbf{DDQN} & \textbf{B\&H} & \textbf{ARIMA} & \textbf{Momentum} & \textbf{RF} \\
 \midrule
-Cum.\ Return   & +49.6\%   & $-$6.7\%  & +159.0\% \\
-Sharpe          & 0.84      & 0.03      & 1.65    \\
-Max DD          & $-$32.4\% & $-$38.7\% & $-$31.4\% \\
+Cum.\ Return   & +49.6\%   & $-$6.7\%  & +159.0\% & --- & --- & --- \\
+Sharpe          & 0.84      & 0.03      & 1.65     & --- & --- & --- \\
+Max DD          & $-$32.4\% & $-$38.7\% & $-$31.4\% & --- & --- & --- \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -154,7 +185,9 @@ These results highlight a fundamental challenge in RL-based trading: a strong pa
 %====================================================================
 
 An early bug used normalised returns (std${\approx}1$) instead of raw returns for rewards, producing unrealistic values; fixed by separating \texttt{raw\_return}.
-Exponential $\varepsilon$-decay exhausted exploration in one episode; linear decay over 200K steps resolved this.
+Initial linear $\varepsilon$-decay exhausted exploration too quickly; switched to exponential decay for smoother exploration–exploitation trade-off.
+MSE loss was sensitive to large reward outliers; replaced with Huber (smooth-$\ell_1$) loss and added reward clipping to $[-1,1]$.
+Hard target-network copies caused training instability; replaced with soft polyak updates ($\tau{=}0.005$).
 Short-selling can cause portfolio values below zero, so we clamp at $10^{-8}$.
 
 %====================================================================
@@ -175,7 +208,7 @@ Extensions include policy gradient methods (PPO) for continuous position sizing,
 \textbf{Member} & \textbf{Contributions} \\
 \midrule
 Rutwik &
-DQN/DDQN implementation from scratch; hyperparameter tuning \\
+DQN/DDQN implementation from scratch; hyperparameter tuning (lr, batch size, buffer size); exponential $\varepsilon$-decay; soft target-network updates ($\tau{=}0.005$); Huber loss and reward clipping; position-delta action space; log-return reward; random episode windows; best-model checkpointing; baseline comparison integration \\
 \midrule
 Yufan &
 Data pipeline: \texttt{yfinance} OHLCV download, 9-feature engineering (RSI, MACD, Bollinger Bands, ATR, OBV, configurable MA deviations, volume normalisation), train-only z-score normalisation, multi-ticker \texttt{load\_all()} support.
