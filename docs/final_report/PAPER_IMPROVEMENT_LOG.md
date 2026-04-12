@@ -10,10 +10,11 @@ User guidance: "we don't have to beat sota or baseline, just follow the introduc
 | Round | Score | Verdict | Key Changes |
 |-------|-------|---------|-------------|
 | Round 0 (original) | 6/10 (B) | Needs major fixes | Baseline |
-| Round 1 | — | — | CRITICAL + MAJOR fixes implemented (see below) |
+| Round 1 | — | — | CRITICAL + MAJOR fixes implemented |
 | Round 2 | 8/10 (A-) | Needs minor fixes | Minor cleanup (loss vs reward, policy-evidence tie, eq overflow) |
+| Round 3 | 9/10 (A) → targeting 10 (A+) | **Yes, ready to submit** | Added abstract, TikZ architecture diagram, all 4 real baselines, 12-ref bibliography, policy behaviour table, momentum a priori clarification, real DDQN position statistics replacing "cautious" framing |
 
-Net change: **+2 points (B → A-)** across 2 rounds.
+Net change: **+3 points (B → A)** across 3 rounds, with a further stretch toward A+ via the policy behaviour table and rewritten DDQN analysis.
 
 ## Round 1 Review (Baseline = Round 0)
 
@@ -131,17 +132,52 @@ Net change: **+2 points (B → A-)** across 2 rounds.
 
 - **`[cite ...]` / `R^10` / `Eq. ref:reward` placeholders** flagged as minor. These were artifacts of the representational text sent in the review prompt (plain-text paraphrase), not real placeholders in the actual `.tex`, which uses proper `\cite{}`, `\mathbb{R}^{10}`, `Eq.~\ref{eq:reward}`. False positive.
 
+## Round 3 Review
+
+<details>
+<summary>GPT-5.4 xhigh Review — Round 3 (full text)</summary>
+
+**Overall Score:** `9/10 (A)`
+
+**Summary:** This version now delivers the pedagogical goal well. The report is internally coherent, the from-scratch DQN/DDQN pipeline is explained in a way that supports course learning, and the final narrative is much more honest and informative because the RL agents are placed against fully executed classical baselines rather than only against buy-and-hold. As a course project report, this is submission-ready.
+
+**Strengths:**
+- The paper now clearly matches its stated goal: understanding textbook DRL from first principles on real data, not chasing SOTA.
+- Experimental reporting is much more complete and credible now that all baselines are actually run and discussed quantitatively.
+- The new ranking is pedagogically strong: DQN is neither a miracle nor a failure, and the paper explains that clearly.
+- The "What each component is for" subsection directly supports the course objective.
+- The architecture figure is exactly the kind of diagram that helps a course grader see that the authors understand the DQN training loop.
+- The bibliography is now appropriate for a Master's-level report and is integrated into the text.
+- The case-study framing around AAPL is honest and consistent.
+- The contributions section is clearer and more believable.
+
+**Remaining Weaknesses (all MINOR):**
+- Should state explicitly whether the Momentum-20 horizon is fixed a priori or selected via validation.
+- The "DDQN is visibly more cautious" claim would be stronger if tied to direct position / trade statistics instead of portfolio-value shape.
+- The "zero-position line" wording is a mismatch when the referenced figure is a portfolio-value plot.
+
+**Verdict:** `Yes, ready to submit as a course project report.`
+
+**Path to 10/10 (A+):** one extra layer of pedagogical evidence — either a small ablation of key DQN ingredients, or a policy behaviour table with fraction of time long / flat / short and trade counts for DQN vs DDQN vs baselines.
+
+</details>
+
+### Round 3 Fixes Implemented
+
+1. **Added "a priori" clarification to the Momentum-20 baseline description.** The 20-day horizon is now stated explicitly as a standard monthly-lookback rule fixed in advance, not selected on the validation set.
+
+2. **Ran DQN and DDQN on the test split and measured real position statistics.** DQN spends 58.8% long, 8.5% flat, 32.7% short with 57 trades. DDQN spends 35.5% long, 17.8% flat, **46.7% short** with 101 trades. The real story is not "DDQN is more cautious" — DDQN is actually biased short during a secular uptrend and trades nearly twice as often. Rewrote the DDQN analysis paragraph in Section "Training and Results" to reflect this honest finding, and replaced the "zero-position line" wording with a reference to the new statistics table.
+
+3. **Added Appendix C "Policy Behaviour on the Test Split"** with a compact 6-row table reporting % long / flat / short, total trades, and trade rate for DQN, DDQN, B&H, ARIMA, Momentum-20 and Random Forest, plus a short discussion paragraph. Pedagogically interesting ranking: Momentum-20 (the best performer) is also the least active baseline at only 21 trades, while Random Forest (the worst performer) is the most active at 183 trades.
+
 ## Format Check
 
-- **Pages:** 8 (within typical 6--8 page course-report range)
-- **Overfull hbox:** 0 (fixed during Round 2)
-- **Underfull hbox:** 17 (all minor badness, none affecting readability — typical for two-column layout)
+- **Pages:** 10 (abstract + 7 body sections + 3 appendices)
+- **Overfull hbox:** 0
 - **Undefined references:** 0
+- **Undefined citations:** 0
 - **Missing images:** 0
 
 ## PDF Artifacts
 
-- `report_groupID24_round0_original.pdf` — Original, pre-review
-- `report_groupID24_round1.pdf` — After Round 1 fixes (CRITICAL + MAJOR)
-- `report_groupID24_round2.pdf` — Final, after Round 2 minor cleanup
-- `report_groupID24.pdf` — Current (identical to round2)
+- `report_groupID24.pdf` — Current, Round 3 final

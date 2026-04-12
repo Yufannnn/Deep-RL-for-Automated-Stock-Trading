@@ -179,7 +179,7 @@ The simplest passive strategy buys one unit at the start of the test period and 
 At each test step $t$ we refit an AR(1) model on a rolling 252-day window of recent daily returns, warmed up with the full training and validation history, and we forecast the next return $\hat{r}_{t+1}$. The position is $+1$ if $\hat{r}_{t+1} > 0$ and $0$ otherwise. This baseline is deliberately long-only whereas the RL agent may also go short, which keeps the time-series baseline simple and conservative. It acts as a sanity check on whether a textbook autoregressive signal already extracts useful predictive structure from the data.
 
 \textbf{Momentum (20-day).}
-At each test step we compute the trailing 20-day cumulative return on the close price. A positive trailing return triggers a long position and a non-positive return leaves the agent flat, again using only the long-and-flat subset of the position space. Momentum is a classic factor in financial economics and serves as a standard weak baseline for active strategies on trending assets.
+At each test step we compute the trailing 20-day cumulative return on the close price. A positive trailing return triggers a long position and a non-positive return leaves the agent flat, again using only the long-and-flat subset of the position space. The 20-day horizon is a standard monthly-lookback rule fixed \emph{a priori} and is not selected on the validation set, so it acts as a fair out-of-the-box baseline rather than a tuned competitor. Momentum is a classic factor in financial economics and is a standard weak baseline for active strategies on trending assets.
 
 \textbf{Random Forest classifier.}
 We train a \texttt{RandomForestClassifier} with 200 trees on the concatenated training and validation set, using the same 9 z-score-normalised features that the RL agents observe, with a binary label indicating whether the next day's raw return is positive. On the test split a predicted up day gives a long position and a predicted down day gives a flat position. This baseline asks whether a powerful non-linear supervised learner on the same feature set can already outperform the RL agents.
@@ -218,9 +218,9 @@ The test period spans 2018 to 2020 and therefore includes the COVID-19 crash of 
 
 The four classical baselines already span an unusually wide range. Buy-and-hold captures the full ${\sim}3\times$ secular uptrend of AAPL and delivers a very strong raw return of $+159\%$. Simple 20-day price momentum on the same data actually beats buy-and-hold in every metric we track, with a $+167\%$ cumulative return, a Sharpe above $2.6$ and a maximum drawdown of only $-17.5\%$, cut nearly in half relative to the passive benchmark. The ARIMA(1,0,0) walk-forward baseline reaches a comparable Sharpe but a smaller cumulative return of $+121\%$. In striking contrast, the non-linear Random Forest classifier trained on the same 9-feature state ends the test with only $+27\%$ and a drawdown almost identical to buy-and-hold, indicating that raw model capacity on this feature set is not what drives good trading performance.
 
-Against this backdrop, DQN and DDQN land in the middle of the baseline ordering rather than at the bottom. DQN finishes with a clearly positive cumulative return of $+49.6\%$ and a Sharpe of about $0.84$. This places it above the Random Forest classifier on every metric and above DDQN on every metric, yet below both ARIMA and momentum. Its maximum drawdown of $-32.4\%$ is slightly worse than that of buy-and-hold at $-31.4\%$, so we cannot claim that the drawdown-shaped reward actually reduced worst-case drawdown on this split. DDQN ends with a small negative cumulative return and a near-zero Sharpe, consistent with its more conservative target formulation producing systematically smaller $Q$-values and, in this regime, translating into missed long positions during the post-crash recovery rather than any visible gain in stability.
+Against this backdrop, DQN and DDQN land in the middle of the baseline ordering rather than at the bottom. DQN finishes with a clearly positive cumulative return of $+49.6\%$ and a Sharpe of about $0.84$. This places it above the Random Forest classifier on every metric and above DDQN on every metric, yet below both ARIMA and momentum. Its maximum drawdown of $-32.4\%$ is slightly worse than that of buy-and-hold at $-31.4\%$, so we cannot claim that the drawdown-shaped reward actually reduced worst-case drawdown on this split. DDQN ends with a small negative cumulative return and a near-zero Sharpe. Table~\ref{tab:policy} in Appendix~\ref{app:policy} makes this picture concrete: on the test split DQN spends 58.8\% of the time long and 32.7\% short with 57 trades, whereas DDQN spends only 35.5\% of the time long and a full 46.7\% of the time \emph{short} with 101 trades. The conservative-target bias of DDQN does not translate into a cautious flat policy as one might naively expect. Instead its systematically smaller $Q$-values appear to push it toward shorting during the strong 2018--2020 uptrend, which is why it ends slightly under water while still being substantially more active than DQN.
 
-Taken together, the experiment illustrates three lessons from first principles. First, the gap between an RL agent and buy-and-hold is not automatic evidence of a hard problem, because simple classical rules like 20-day momentum can also beat buy-and-hold on this particular trending asset. Second, a textbook from-scratch DQN is not a magic replacement for well-understood trading signals, and in this setting it underperforms both ARIMA and momentum while outperforming a Random Forest trained on the same features. Third, the difference between DQN and DDQN is visible not as a simple better-or-worse gap but as a qualitatively different policy. The DQN episode walkthrough in Appendix~\ref{app:results} (Fig.~\ref{fig:walkthrough}) shows that DQN commits to long positions for extended stretches and only retreats to flat around the sharpest drawdowns, whereas the DDQN portfolio trajectory in Fig.~\ref{fig:training} stays far closer to the zero-position line, matching its more conservative target and producing fewer decisive long or short commitments. Both policies are internally plausible given their respective target formulations, and the goal of the project, namely understanding how textbook DQN variants actually behave on real market data relative to simple classical rules, is met.
+Taken together, the experiment illustrates three lessons from first principles. First, the gap between an RL agent and buy-and-hold is not automatic evidence of a hard problem, because simple classical rules like 20-day momentum can also beat buy-and-hold on this particular trending asset. Second, a textbook from-scratch DQN is not a magic replacement for well-understood trading signals, and in this setting it underperforms both ARIMA and momentum while outperforming a Random Forest trained on the same features. Third, the difference between DQN and DDQN on real market data is not a simple better-or-worse gap but a qualitatively different position policy. The DQN episode walkthrough in Appendix~\ref{app:results} (Fig.~\ref{fig:walkthrough}) shows that DQN commits to long positions for extended stretches and only retreats near sharp drawdowns, whereas the position statistics in Table~\ref{tab:policy} show that DDQN spends more time short than long and trades almost twice as often, a behaviour that is internally consistent with its more conservative target formulation and directly supports our stated goal of understanding how textbook DQN variants actually behave on real market data relative to simple classical rules.
 
 %====================================================================
 \section{Challenges}
@@ -319,6 +319,35 @@ H.~Yang, X.-Y. Liu, S.~Zhong, and A.~Walid, ``Deep reinforcement learning for au
   \caption{Feature distributions across train/val/test splits (z-score normalised using training-set statistics only). Overlapping distributions confirm consistent normalisation without look-ahead bias.}
   \label{fig:distributions}
 \end{figure}
+
+%====================================================================
+\section{Policy Behaviour on the Test Split}
+\label{app:policy}
+%====================================================================
+
+Table~\ref{tab:policy} reports position and trading statistics for the two RL agents and the four classical baselines, measured on the same 437-day AAPL test split (2018--2020) used for the headline metrics in Table~\ref{tab:results}. For each method we report the fraction of test steps spent long, flat or short, the total number of position changes over the split, and the trade rate expressed as a percentage of test days on which a position change occurred. The classical baselines operate only in the long-and-flat subset of the position space by construction, while DQN and DDQN may also go short.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Position and trading statistics on the AAPL test split. Fractions are percentages of the 437 test days. The trade rate is the number of position changes divided by the number of test days.}
+\label{tab:policy}
+\begin{tabular}{lcccrr}
+\toprule
+ & \textbf{\% Long} & \textbf{\% Flat} & \textbf{\% Short} & \textbf{Trades} & \textbf{Trade rate} \\
+\midrule
+DQN              & $58.8$ & $8.5$  & $32.7$ &  57 & $13.1\%$ \\
+DDQN             & $35.5$ & $17.8$ & $46.7$ & 101 & $23.2\%$ \\
+\midrule
+Buy-and-Hold     & $100.0$ & $0.0$  & $0.0$ &   0 & $0.0\%$  \\
+ARIMA(1,0,0)     & $68.6$  & $31.4$ & $0.0$ & 145 & $33.2\%$ \\
+Momentum-20      & $76.0$  & $24.0$ & $0.0$ &  21 & $4.8\%$  \\
+Random Forest    & $55.6$  & $44.4$ & $0.0$ & 183 & $41.9\%$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Three observations stand out. First, the best-performing baseline by every headline metric, 20-day momentum, is also the \emph{least} active one, with only 21 position changes over the full test split, which is consistent with its design as a slow trend follower and explains the very low max drawdown of $-17.5\%$ reported in Table~\ref{tab:results}. Second, the Random Forest classifier is by far the \emph{most} active baseline with 183 trades, so raw classifier capacity on the 9-feature state is not translating into stable high-level trading decisions. Third, the policy difference between DQN and DDQN is qualitative and directly visible here. DQN ends up biased long at $58.8\%$ of the test split with $57$ trades, while DDQN ends up biased \emph{short} at $46.7\%$ and trades nearly twice as often at $101$ total trades. The DDQN underperformance on this trending test split is therefore not a cautious-flat failure mode but an actively-short failure mode, which is what a more conservative target produces in combination with a shortable position space during a strong secular uptrend.
 
 %====================================================================
 \section{Episode Walkthrough}
