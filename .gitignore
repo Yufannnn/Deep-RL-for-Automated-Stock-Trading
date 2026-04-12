@@ -19,3 +19,6 @@ __pycache__/
 admin_week05.pdf
 archive.zip
 YF_signature.png
+
+# Ephemeral paper-improvement-loop state
+PAPER_IMPROVEMENT_STATE.json
