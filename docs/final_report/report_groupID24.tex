@@ -160,6 +160,83 @@ Key components, all implemented from scratch: a replay buffer~\cite{lin1992} of 
 \end{multline}
 Our DDQN subclasses DQN and overrides only this target computation. Everything else, including the network, optimiser, $\varepsilon$-schedule and replay buffer, is shared between the two agents.
 
+\textbf{A2C~\cite{mnih2016a3c}.}
+To extend the comparison beyond value-based methods, we additionally implement Advantage Actor-Critic (A2C) as a policy-gradient baseline. Unlike DQN and DDQN, which learn an action-value function $Q(s,a)$, A2C directly learns a stochastic policy $\pi_\theta(a|s)$ together with a state-value function $V_\phi(s)$. The actor outputs a categorical distribution over the same three discrete trading actions used by the DQN agents,  while the critic estimates the expected future return from the current state.
+
+For a rollout of transitions, we compute a discounted return $G_t$ and the advantage estimate $A_t$ as:
+
+\vspace{-5pt}
+\begin{equation}
+  G_t = \sum_{k=0}^{T-t-1} \gamma^k r_{t+k},
+\end{equation}
+\vspace{-7pt}
+\begin{equation}
+  A_t = G_t - V_\phi(s_t).
+\end{equation}
+
+The actor is trained to increase the probability of actions with positive advantage and decrease the probability of actions with negative advantage, while the critic is trained to regress the discounted return:
+\vspace{-5pt}
+\begin{equation}
+  \mathcal{L}_{\text{actor}}(\theta)
+  = -\mathbb{E}_t\left[\log \pi_\theta(a_t|s_t) A_t \right],
+\end{equation}
+\vspace{-10pt}
+\begin{equation}
+  \mathcal{L}_{\text{critic}}(\phi)
+  =
+  \mathbb{E}_t
+  \left[
+  \left(G_t - V_\phi(s_t)\right)^2
+  \right].
+\end{equation}
+The final A2C objective combines the actor loss, the critic loss and an entropy bonus:
+\begin{equation}
+  \mathcal{L}_{\text{A2C}}
+  =
+  \mathcal{L}_{\text{actor}}
+  + c_v \mathcal{L}_{\text{critic}}
+  - c_e \mathcal{H}\!\left(\pi_\theta(\cdot|s_t)\right),
+\end{equation}
+where $c_v$ controls the value-loss weight and $c_e$ controls the strength of entropy regularisation. A2C therefore provides a simple actor-critic comparison point for the value-based DQN family.
+
+\textbf{PPO~\cite{schulman2017ppo}.}
+We also implement Proximal Policy Optimisation (PPO), a more stable actor-critic method that constrains the size of each policy update. This is particularly relevant in stock trading, where reward signals are noisy and a large policy update may quickly produce unstable trading behaviour. PPO uses the same state, action space and reward definition as the other RL agents, but replaces Q-learning with a clipped policy-gradient objective.
+
+Let $\rho_t(\theta)$ denotes the probability ratio between the updated policy and the policy that generated the rollout. PPO optimizes the clipped surrogate loss:
+
+\begin{equation}
+  \bar{\rho}_t(\theta)
+  =
+  \mathrm{clip}\!\left(
+  \rho_t(\theta), 1-\epsilon, 1+\epsilon
+  \right),
+\end{equation}
+
+\vspace{-18pt}
+\begin{equation}
+  \mathcal{L}_{\text{clip}}(\theta)
+  =
+  -\mathbb{E}_t
+  \left[
+  \min
+  \left(
+  \rho_t(\theta) A_t,\,
+  \bar{\rho}_t(\theta) A_t
+  \right)
+  \right].
+\end{equation}
+
+
+where $\epsilon$ is the clipping threshold. The full PPO objective combines the clipped actor loss, the critic loss and an entropy bonus:
+\begin{equation}
+  \mathcal{L}_{\text{PPO}}
+  =
+  \mathcal{L}_{\text{clip}}
+  + c_v \mathcal{L}_{\text{critic}}
+  - c_e \mathcal{H}\!\left(\pi_\theta(\cdot|s_t)\right).
+\end{equation}
+Compared with A2C, PPO keeps the same actor-critic structure but uses clipping to prevent overly large policy updates. Comparing A2C and PPO therefore helps isolate whether PPO's clipped objective improves stability in this noisy single-asset trading environment.
+
 \textbf{What each component is for.}
 Re-deriving these algorithms from scratch gave us a concrete understanding of why each ingredient is present. The \textbf{replay buffer} breaks the temporal correlation of on-policy samples so that stochastic-gradient updates see approximately i.i.d.\ mini-batches. The \textbf{target network} $Q_{\bar\theta}$ stabilises bootstrapping by keeping the TD target slowly-changing relative to the online network. A hard copy of the weights caused training oscillations in our early runs and the soft Polyak update smoothed them out. The \textbf{exponential $\varepsilon$-decay} schedule balances early exploration, where the agent randomly flips its position, against later exploitation, and it kept exploration alive significantly longer than the linear schedule we first tried. \textbf{Reward clipping} combined with the Huber loss bounds the TD target and makes large outlier returns such as those around the COVID crash much less destabilising than the square loss. Finally, the \textbf{DDQN target decoupling} addresses the observation that $\max_{a'} Q_{\bar\theta}(s',a')$ systematically overshoots the true maximum in noisy function approximation settings.
 
@@ -212,6 +289,20 @@ Max Drawdown   & $-32.4\%$ & $-38.7\%$ & $-31.4\%$  & $-18.8\%$  & $\mathbf{-17.
 \end{tabular}
 \end{table*}
 
+\begin{table}[H]
+\centering
+\caption{Actor-critic RL results on AAPL test dataset. PPO and A2C use the same state representation, action space, reward function and transaction-cost setting as DQN and DDQN.}
+\label{tab:actor_critic_results}
+\begin{tabular}{lccc}
+\toprule
+\textbf{Method} & \textbf{Cum. Return} & \textbf{Sharpe} & \textbf{Max Drawdown} \\
+\midrule
+A2C & $+152.8\%$ & $+1.61$ & $-31.4\%$ \\
+PPO & $+138.2\%$ & $+1.53$ & $-31.4\%$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
 A detailed episode walkthrough showing position decisions, cumulative reward, and trade markers is provided in Appendix~\ref{app:results} (Figure~\ref{fig:walkthrough}).
 
 The test period spans 2018 to 2020 and therefore includes the COVID-19 crash of early 2020, so it is a fairly severe out-of-sample stress test. Reading Table~\ref{tab:results} against the stated pedagogical goal, the numbers tell a richer story than a simple agent-vs-buy-and-hold comparison would suggest.
@@ -220,7 +311,9 @@ The four classical baselines already span an unusually wide range. Buy-and-hold 
 
 Against this backdrop, DQN and DDQN land in the middle of the baseline ordering rather than at the bottom. DQN finishes with a clearly positive cumulative return of $+49.6\%$ and a Sharpe of about $0.84$. This places it above the Random Forest classifier on every metric and above DDQN on every metric, yet below both ARIMA and momentum. Its maximum drawdown of $-32.4\%$ is slightly worse than that of buy-and-hold at $-31.4\%$, so we cannot claim that the drawdown-shaped reward actually reduced worst-case drawdown on this split. DDQN ends with a small negative cumulative return and a near-zero Sharpe. Table~\ref{tab:policy} in Appendix~\ref{app:policy} makes this picture concrete: on the test split DQN spends 58.8\% of the time long and 32.7\% short with 57 trades, whereas DDQN spends only 35.5\% of the time long and a full 46.7\% of the time \emph{short} with 101 trades. The conservative-target bias of DDQN does not translate into a cautious flat policy as one might naively expect. Instead its systematically smaller $Q$-values appear to push it toward shorting during the strong 2018--2020 uptrend, which is why it ends slightly under water while still being substantially more active than DQN.
 
-Taken together, the experiment illustrates three lessons from first principles. First, the gap between an RL agent and buy-and-hold is not automatic evidence of a hard problem, because simple classical rules like 20-day momentum can also beat buy-and-hold on this particular trending asset. Second, a textbook from-scratch DQN is not a magic replacement for well-understood trading signals, and in this setting it underperforms both ARIMA and momentum while outperforming a Random Forest trained on the same features. Third, the difference between DQN and DDQN on real market data is not a simple better-or-worse gap but a qualitatively different position policy. The DQN episode walkthrough in Appendix~\ref{app:results} (Fig.~\ref{fig:walkthrough}) shows that DQN commits to long positions for extended stretches and only retreats near sharp drawdowns, whereas the position statistics in Table~\ref{tab:policy} show that DDQN spends more time short than long and trades almost twice as often, a behaviour that is internally consistent with its more conservative target formulation and directly supports our stated goal of understanding how textbook DQN variants actually behave on real market data relative to simple classical rules.
+The additional actor-critic results in Table~\ref{tab:actor_critic_results} change the RL comparison substantially. A2C achieves a cumulative return of $+152.8\%$ and a Sharpe of $1.61$, while PPO reaches $+138.2\%$ and a Sharpe of $1.53$. Both actor-critic agents therefore outperform DQN and DDQN by a large margin on this test split, and their returns are much closer to buy-and-hold than to the value-based RL agents. However, their maximum drawdown remains $-31.4\%$, essentially the same as buy-and-hold. This suggests that A2C and PPO mainly learn a strongly long-biased policy that benefits from the secular AAPL uptrend, rather than a risk-reducing active trading policy. In other words, actor-critic learning improves return capture relative to DQN/DDQN, but it still does not match the risk-adjusted performance of the simple 20-day momentum rule.
+
+Taken together, the experiment illustrates four lessons from first principles. First, the gap between an RL agent and buy-and-hold is not automatic evidence of a hard problem, because simple classical rules like 20-day momentum can also beat buy-and-hold on this particular trending asset. Second, a textbook from-scratch DQN is not a magic replacement for well-understood trading signals, and in this setting it underperforms both ARIMA and momentum while outperforming a Random Forest trained on the same features. Third, the difference between DQN and DDQN on real market data is not a simple better-or-worse gap but a qualitatively different position policy. The DQN episode walkthrough in Appendix~\ref{app:results} (Fig.~\ref{fig:walkthrough}) shows that DQN commits to long positions for extended stretches and only retreats near sharp drawdowns, whereas the position statistics in Table~\ref{tab:policy} show that DDQN spends more time short than long and trades almost twice as often. Fourth, the actor-critic methods show that changing the RL algorithm family matters: A2C and PPO recover much more of the upward trend than DQN/DDQN, but their drawdowns remain close to buy-and-hold, so higher return does not automatically imply better downside control. Overall, the strongest method on this AAPL split remains the simple 20-day momentum baseline, while the main pedagogical value of the RL experiments is to reveal how value-based and actor-critic agents behave differently under the same market environment.
 
 %====================================================================
 \section{Challenges}
@@ -232,7 +325,7 @@ An early version of the environment used normalised returns with standard deviat
 \section{Future Work}
 %====================================================================
 
-Natural extensions of this project include policy-gradient methods such as PPO for continuous position sizing, multi-asset portfolio environments that trade several DJIA tickers jointly, recurrent LSTM architectures for explicit temporal dependencies, and reward formulations based directly on Sharpe or CVaR rather than raw log-returns.
+Natural extensions of this project include continuous-action actor-critic methods such as SAC or TD3 for direct position sizing, multi-asset portfolio environments that trade several DJIA tickers jointly, recurrent LSTM architectures for explicit temporal dependencies, and reward formulations based directly on Sharpe or CVaR rather than raw log-returns.
 
 %====================================================================
 \section{Contributions}
@@ -258,8 +351,26 @@ Natural extensions of this project include policy-gradient methods such as PPO f
   \item Classical baselines: buy-and-hold, ARIMA(1,0,0) walk-forward and 20-day momentum, integrated into the reporting and plotting flow.
 \end{itemize}
 
+\vspace{2pt}
+\noindent\textbf{Xin Fei.}
+\begin{itemize}[leftmargin=*, itemsep=1pt, topsep=2pt]
+  \item Implemented the additional actor-critic agents, including A2C and PPO, integrated them into the existing training and evaluation pipeline for comparison with DQN and DDQN.
+  \item Analysed the actor-critic results against value-based RL agents and classical baselines.
+\end{itemize}
+
 %====================================================================
 \begin{thebibliography}{99}
+
+\bibitem{mnih2016a3c}
+V.~Mnih, A.~P. Badia, M.~Mirza, et al.,
+``Asynchronous methods for deep reinforcement learning,''
+in \emph{ICML}, 2016.
+
+\bibitem{schulman2017ppo}
+J.~Schulman, F.~Wolski, P.~Dhariwal, A.~Radford, and O.~Klimov,
+``Proximal policy optimization algorithms,''
+\emph{arXiv preprint arXiv:1707.06347}, 2017.
+
 \bibitem{sutton2018}
 R.~S. Sutton and A.~G. Barto, \emph{Reinforcement Learning: An Introduction}, 2nd ed. MIT Press, 2018.
 
