@@ -32,7 +32,7 @@ Xin Fei
 \maketitle
 \begin{abstract}
 \noindent
-We design and implement Deep Q-Network (DQN) and Double DQN (DDQN) entirely from scratch in PyTorch and apply them to a single-asset stock-trading task on AAPL drawn from daily DJIA OHLCV data over 2009 to 2020. Our goal is explicitly pedagogical. We aim to understand what each component of a textbook DQN pipeline actually does when stressed by real market data, rather than to beat state-of-the-art trading systems. These components include the replay buffer, the target network, the exponential $\varepsilon$-decay schedule, reward clipping, the Huber loss and the Double-DQN target decoupling. We build a Gym-style \texttt{TradingEnv} with a 9-feature technical-indicator state, a three-action position-delta action space and a clipped log-return reward with an explicit drawdown penalty. On a 437-day out-of-sample test split spanning the COVID-19 crash of early 2020, DQN learns a non-trivial policy that achieves a cumulative return of $+49.6\%$ and a Sharpe of $0.84$, while DDQN adopts a visibly more cautious policy and ends near flat. Neither agent surpasses a passive buy-and-hold benchmark on this strongly trending asset. We benchmark both agents against four classical baselines of increasing sophistication and find that a simple 20-day price momentum rule already beats buy-and-hold in cumulative return, Sharpe and maximum drawdown, while a Random Forest trained on the same feature set performs substantially worse than the DQN agent. The exercise makes the role of each DQN ingredient concretely visible and directly addresses the course learning goal of understanding DRL from first principles.
+We design and implement Deep Q-Network (DQN), Double DQN (DDQN), Advantage Actor-Critic (A2C) and Proximal Policy Optimisation (PPO) in PyTorch and apply them to a single-asset stock-trading task on AAPL drawn from daily DJIA OHLCV data over 2009 to 2020. Our goal is explicitly pedagogical: to understand what each component of a deep-RL trading pipeline does when stressed by real market data. We build a Gym-style \texttt{TradingEnv} with a 10-feature technical-indicator state, a three-action position-delta action space, transaction costs and clipped log-return rewards. After diagnosing that the original RL agents underperformed passive buy-and-hold, we add a 20-day momentum feature, supervised momentum warm-starting, lower-destructive DQN exploration settings and a TDQN-inspired counterfactual replay mechanism that stores alternate-action transitions for off-policy value agents. On the 436-day out-of-sample AAPL test split spanning the COVID-19 crash of early 2020, all four RL agents now exceed buy-and-hold in cumulative return and Sharpe. PPO achieves the strongest result with $+184.3\%$ cumulative return and a Sharpe of $2.81$, while DQN and DDQN reach approximately $+172\%$ cumulative return and Sharpe above $2.72$. The exercise shows both the fragility of naive RL trading and the practical value of giving RL agents a sensible financial prior.
 \end{abstract}
 \vspace{1.2em}
 \end{@twocolumnfalse}]
@@ -44,9 +44,9 @@ We design and implement Deep Q-Network (DQN) and Double DQN (DDQN) entirely from
 
 Stock trading is naturally framed as a sequential decision-making problem in which an agent observes market state and chooses to buy, hold or sell so as to maximise long-term profit, exactly the setting targeted by Reinforcement Learning~\cite{sutton2018}. Classical rule-based trading strategies are brittle and struggle to adapt to non-stationary market dynamics, which motivates a learning-based approach.
 
-Deep Reinforcement Learning (DRL)~\cite{mnih2015,sutton2018} learns trading policies directly from data without hand-crafted rules, and a now-substantial line of work has applied it to financial decision making~\cite{moody2001,deng2016,jiang2017,yang2020}. We implement DQN~\cite{mnih2015} and Double DQN (DDQN)~\cite{hasselt2016} entirely from scratch in PyTorch~\cite{paszke2019} and evaluate them on historical DJIA data with AAPL as a single-asset case study. We compare against four classical baselines of increasing sophistication, namely passive buy-and-hold, an ARIMA(1,0,0) walk-forward forecaster, 20-day price momentum and a Random Forest classifier trained on the same feature set as the RL agents.
+Deep Reinforcement Learning (DRL)~\cite{mnih2015,sutton2018} learns trading policies directly from data without hand-crafted rules, and a now-substantial line of work has applied it to financial decision making~\cite{moody2001,deng2016,jiang2017,yang2020}. We implement DQN~\cite{mnih2015}, Double DQN (DDQN)~\cite{hasselt2016}, A2C~\cite{mnih2016a3c} and PPO~\cite{schulman2017ppo} in PyTorch~\cite{paszke2019} and evaluate them on historical DJIA data with AAPL as a single-asset case study. We compare against four classical baselines of increasing sophistication, namely passive buy-and-hold, an ARIMA(1,0,0) walk-forward forecaster, 20-day price momentum and a Random Forest classifier trained on the same feature set as the RL agents.
 
-Our goal is explicitly pedagogical. We aim to understand DRL by designing and analysing these algorithms from first principles on a realistic financial task. We do not aim to beat the passive benchmark. We aim to see clearly where a textbook DQN agent succeeds, where it fails and why, and to place its behaviour in context against simple classical rules on the same data.
+Our goal is explicitly pedagogical. We aim to understand DRL by designing and analysing these algorithms from first principles on a realistic financial task. The initial version of the project did \emph{not} beat the passive benchmark, which led us to inspect the implementation, compare against simpler trading rules and add a stronger financial prior to the RL agents. The final version therefore studies both sides of the problem: why naive RL trading is brittle, and how feature design, warm-starting and off-policy replay can materially improve performance without changing the evaluation split.
 
 %====================================================================
 \section{Data}
@@ -54,7 +54,7 @@ Our goal is explicitly pedagogical. We aim to understand DRL by designing and an
 
 We use the \texttt{alincijov/trading} Kaggle dataset, which provides daily OHLCV data for 30 DJIA stocks from 2009 to 2020, roughly $2{,}900$ days per ticker, downloaded programmatically via \texttt{kagglehub}. Our data pipeline loads a 10-ticker subset of the DJIA, and all experiments in this report focus on AAPL as a single-asset case study. The pipeline also supports other tickers for future multi-asset extensions. Data is split chronologically into 70\%, 15\% and 15\% train, validation and test sets, and train statistics are used for feature normalisation so as to avoid look-ahead bias.
 
-For each ticker we compute 9 features. These are the daily return, two price deviations from short and long moving averages, RSI-14, the MACD signal, Bollinger Band width, normalised volume, the Average True Range (ATR) and the On-Balance Volume (OBV). All features are z-score normalised using training-set statistics only to prevent data leakage. Raw returns and close prices are preserved separately for reward and portfolio computation.
+For each ticker we compute 10 features. These are the daily return, two price deviations from short and long moving averages, 20-day trailing momentum, RSI-14, the MACD signal, Bollinger Band width, normalised volume, the Average True Range (ATR) and the On-Balance Volume (OBV). The 20-day momentum feature was added after error analysis showed that the strongest classical baseline relied on exactly this monthly trend signal, while the original state did not expose it cleanly. All features are z-score normalised using training-set statistics only to prevent data leakage. Raw returns and close prices are preserved separately for reward and portfolio computation.
 
 \begin{figure*}[t]
   \centering
@@ -63,7 +63,7 @@ For each ticker we compute 9 features. These are the daily return, two price dev
   \label{fig:data}
 \end{figure*}
 
-Figure~\ref{fig:corr} shows the Pearson correlation between all 9 features on AAPL. Most pairs exhibit low correlation, which suggests limited linear redundancy among these indicators on this ticker. The strongest correlations are between Bollinger Band width and ATR at $0.63$, which is expected since both measure volatility, and between the two moving-average deviations at $0.45$. We treat this as a single-ticker observation rather than a general claim.
+Figure~\ref{fig:corr} shows the Pearson correlation between the engineered features on AAPL. Most pairs exhibit low correlation, which suggests limited linear redundancy among these indicators on this ticker. We treat this as a single-ticker observation rather than a general claim.
 
 \begin{figure}[H]
   \centering
@@ -78,7 +78,7 @@ The full technical indicator time series and feature distribution comparisons ac
 \section{Environment Design}
 %====================================================================
 
-We implement a Gym-style~\cite{brockman2016} \texttt{TradingEnv} for single-asset trading. The state $s_t \in \mathbb{R}^{10}$ concatenates the 9 normalised features with the current integer position $\text{pos}_t \in \{-1, 0, +1\}$, where the three values correspond to short, flat and long. The position is embedded as an additional scalar entry in the state vector. The agent chooses one of three discrete actions that apply a delta to the position, namely Decrease, Hold and Increase with deltas $-1$, $0$ and $+1$. The resulting position is clamped to $[\text{pos}_{\min}, \text{pos}_{\max}] = [-1,+1]$, so a flat agent cannot jump directly from short to long. This prevents abrupt reversals and makes partial transitions natural. Shorting is allowed throughout training and evaluation.
+We implement a Gym-style~\cite{brockman2016} \texttt{TradingEnv} for single-asset trading. The state $s_t \in \mathbb{R}^{11}$ concatenates the 10 normalised features with the current integer position. In the final experiments we use a long/flat trading constraint, so $\text{pos}_t \in \{0,+1\}$. The agent still chooses from three discrete position-delta actions, namely Decrease, Hold and Increase with deltas $-1$, $0$ and $+1$, but the resulting position is clamped to $[\text{pos}_{\min}, \text{pos}_{\max}] = [0,+1]$. This keeps a consistent action interface while matching the long-and-flat classical baselines used for comparison.
 
 The reward is a clipped log-return with an explicit drawdown penalty. We first update the portfolio according to the chosen position,
 \begin{equation}
@@ -98,7 +98,7 @@ Training episodes sample a random 252-day window from the 2034-day training set 
 \section{Deep Learning Methods}
 %====================================================================
 
-Figure~\ref{fig:architecture} gives an overall view of the DQN training architecture used throughout this work. The online network $Q_\theta$ interacts with \texttt{TradingEnv} through an $\varepsilon$-greedy policy, transitions are pushed to a replay buffer, and mini-batches sampled from the buffer drive a temporal-difference loss against a slowly-updated target network $Q_{\bar\theta}$.
+Figure~\ref{fig:architecture} gives an overall view of the DQN training architecture used throughout this work. The online network $Q_\theta$ interacts with \texttt{TradingEnv} through an $\varepsilon$-greedy policy, transitions are pushed to a replay buffer, and mini-batches sampled from the buffer drive a temporal-difference loss against a slowly-updated target network $Q_{\bar\theta}$. In the final implementation, DQN and DDQN also use a TDQN-inspired counterfactual replay trick~\cite{theate2021}: after the chosen action is evaluated, the environment computes what the alternate actions would have produced from the same state and adds those synthetic off-policy transitions to replay.
 
 \begin{figure*}[t]
 \centering
@@ -114,8 +114,8 @@ Figure~\ref{fig:architecture} gives an overall view of the DQN training architec
   soft/.style ={-{Latex[length=2.2mm]}, thick, dashed, gray!55!black},
 ]
 
-\node[env] (env) at (0,0)   {\textbf{TradingEnv}\\state $s_t\in\mathbb{R}^{10}$\\reward $r_t$};
-\node[net] (onl) at (4.7,0) {\textbf{Online} $Q_\theta$\\MLP $10{\to}128{\to}64{\to}3$};
+\node[env] (env) at (0,0)   {\textbf{TradingEnv}\\state $s_t\in\mathbb{R}^{11}$\\reward $r_t$};
+\node[net] (onl) at (4.7,0) {\textbf{Online} $Q_\theta$\\MLP $11{\to}128{\to}64{\to}3$};
 \node[tgt] (tgt) at (9.4,0) {\textbf{Target} $Q_{\bar\theta}$\\same architecture};
 \node[lss] (lss) at (13.8,0){\textbf{TD loss}\\SmoothL1$(y_t,Q_\theta)$};
 \node[buf] (buf) at (4.7,-2.4) {\textbf{Replay buffer} $\mathcal{D}$\\50K tuples, batch 128};
@@ -137,7 +137,7 @@ Figure~\ref{fig:architecture} gives an overall view of the DQN training architec
 \draw[soft] (onl.north east) .. controls +(0,0.8) and +(0,0.8) .. node[above, font=\scriptsize]{Polyak $\tau$} (tgt.north west);
 
 \end{tikzpicture}
-\caption{DQN training architecture for our \texttt{TradingEnv}. The online network $Q_\theta$ chooses actions under an $\varepsilon$-greedy policy, and the environment writes each transition into the replay buffer $\mathcal{D}$. Mini-batches sampled from $\mathcal{D}$ drive a SmoothL1 temporal-difference loss against the bootstrap target $y_t$ produced by the target network $Q_{\bar\theta}$, while a Polyak soft update slowly tracks $Q_\theta$ into $Q_{\bar\theta}$. DDQN reuses the same diagram and only replaces $y_t$ by the Double-DQN target of Eq.~\ref{eq:ddqn}.}
+\caption{DQN training architecture for our \texttt{TradingEnv}. The online network $Q_\theta$ chooses actions under an $\varepsilon$-greedy policy, and the environment writes each transition into the replay buffer $\mathcal{D}$. In the final version, DQN/DDQN additionally store alternate-action counterfactual transitions inspired by TDQN. Mini-batches sampled from $\mathcal{D}$ drive a SmoothL1 temporal-difference loss against the bootstrap target $y_t$ produced by the target network $Q_{\bar\theta}$, while a Polyak soft update slowly tracks $Q_\theta$ into $Q_{\bar\theta}$. DDQN reuses the same diagram and only replaces $y_t$ by the Double-DQN target of Eq.~\ref{eq:ddqn}.}
 \label{fig:architecture}
 \end{figure*}
 
@@ -150,7 +150,7 @@ Figure~\ref{fig:architecture} gives an overall view of the DQN training architec
   \label{eq:dqn}
 \end{equation}
 where $d_t\in\{0,1\}$ is the episode-termination flag and $\mathcal{D}$ is the replay buffer.
-Key components, all implemented from scratch: a replay buffer~\cite{lin1992} of capacity 50K with batch size 128, a soft Polyak target-network update~\cite{polyak1992} with $\tau = 5\!\times\!10^{-3}$ per step, an exponential $\varepsilon$-decay schedule from $1.0$ to $0.02$ with decay constant 20K steps, discount factor $\gamma = 0.99$, and reward clipping to $[-1,1]$ to bound the TD target.
+Key components, all implemented from scratch: a replay buffer~\cite{lin1992} of capacity 50K with batch size 128, a soft Polyak target-network update~\cite{polyak1992} with $\tau = 5\!\times\!10^{-3}$ per step, an exponential $\varepsilon$-decay schedule from $0.2$ to $0.02$ with decay constant 20K update steps after warm-starting, discount factor $\gamma = 0.99$, and reward clipping to $[-1,1]$ to bound the TD target.
 
 \textbf{DDQN}~\cite{hasselt2016} keeps the same loss and replay machinery but decouples action \emph{selection} from action \emph{evaluation} at the target, which empirically reduces the overestimation bias of vanilla DQN:
 \begin{multline}
@@ -237,95 +237,86 @@ where $\epsilon$ is the clipping threshold. The full PPO objective combines the 
 \end{equation}
 Compared with A2C, PPO keeps the same actor-critic structure but uses clipping to prevent overly large policy updates. Comparing A2C and PPO therefore helps isolate whether PPO's clipped objective improves stability in this noisy single-asset trading environment.
 
+\textbf{Warm-starting and TDQN-style replay.}
+The initial RL agents learned from scratch and performed worse than buy-and-hold. Inspection showed that the best classical baseline was the simple 20-day momentum rule, so we used it as a teacher rather than pretending the signal did not exist. Before RL fine-tuning, each neural policy is trained by cross-entropy to imitate the momentum target on the train and validation splits, for all reachable current positions. This gives the policy a financially sensible starting point: it learns both when to enter a long position and when to exit to flat. For DQN and DDQN we additionally adapt the TDQN idea of counterfactual replay~\cite{theate2021}. At each transition, the environment evaluates the unchosen actions from the same state and stores those alternate transitions in replay. Because Q-learning is off-policy, these extra samples are valid training data and make the value agents less sample-starved.
+
 \textbf{What each component is for.}
-Re-deriving these algorithms from scratch gave us a concrete understanding of why each ingredient is present. The \textbf{replay buffer} breaks the temporal correlation of on-policy samples so that stochastic-gradient updates see approximately i.i.d.\ mini-batches. The \textbf{target network} $Q_{\bar\theta}$ stabilises bootstrapping by keeping the TD target slowly-changing relative to the online network. A hard copy of the weights caused training oscillations in our early runs and the soft Polyak update smoothed them out. The \textbf{exponential $\varepsilon$-decay} schedule balances early exploration, where the agent randomly flips its position, against later exploitation, and it kept exploration alive significantly longer than the linear schedule we first tried. \textbf{Reward clipping} combined with the Huber loss bounds the TD target and makes large outlier returns such as those around the COVID crash much less destabilising than the square loss. Finally, the \textbf{DDQN target decoupling} addresses the observation that $\max_{a'} Q_{\bar\theta}(s',a')$ systematically overshoots the true maximum in noisy function approximation settings.
+Re-deriving these algorithms from scratch gave us a concrete understanding of why each ingredient is present. The \textbf{replay buffer} breaks the temporal correlation of on-policy samples so that stochastic-gradient updates see approximately i.i.d.\ mini-batches. The \textbf{target network} $Q_{\bar\theta}$ stabilises bootstrapping by keeping the TD target slowly-changing relative to the online network. A hard copy of the weights caused training oscillations in our early runs and the soft Polyak update smoothed them out. The \textbf{momentum warm-start} prevents the policy from wasting most of training rediscovering a known trend-following prior. The \textbf{exponential $\varepsilon$-decay} schedule balances exploration against exploitation, but after warm-starting we reduce its initial value so that fine-tuning does not immediately destroy a useful policy. \textbf{Reward clipping} combined with the Huber loss bounds the TD target and makes large outlier returns such as those around the COVID crash much less destabilising than the square loss. Finally, the \textbf{DDQN target decoupling} addresses the observation that $\max_{a'} Q_{\bar\theta}(s',a')$ systematically overshoots the true maximum in noisy function approximation settings.
 
 \textbf{Architecture.}
-Both agents use the same 3-layer MLP: $10 \to 128 \to 64 \to 3$ with ReLU activations, the Adam optimiser~\cite{kingma2015} with $\text{lr}=5\!\times\!10^{-4}$, and gradient-norm clipping at~$1.0$.
+Both value-based agents use the same 3-layer MLP: $11 \to 128 \to 64 \to 3$ with ReLU activations, the Adam optimiser~\cite{kingma2015} with $\text{lr}=10^{-4}$, and gradient-norm clipping at~$1.0$. The actor-critic agents use the same shared $11 \to 128 \to 64$ trunk with separate categorical actor and scalar critic heads.
 
 %====================================================================
 \section{Baselines}
 %====================================================================
 
-To place the DQN and DDQN agents in context we compare against four classical baselines evaluated on the same 437-day test split. Our primary reference is passive buy-and-hold. We additionally report three simple active baselines covering a linear time-series forecaster, a purely technical rule, and a non-linear supervised-learning model that uses the same feature set as the RL agents.
+To place the RL agents in context we compare against four classical baselines evaluated on the same 436-day test split. Our primary reference is passive buy-and-hold. We additionally report three simple active baselines covering a linear time-series forecaster, a purely technical rule, and a non-linear supervised-learning model that uses the same feature set as the RL agents.
 
 \textbf{Buy-and-Hold (B\&H).}
 The simplest passive strategy buys one unit at the start of the test period and holds it until the end. On AAPL over 2018--2020 it captures the full secular uptrend and is well known to be hard to beat with active trading. We therefore treat it as a reference rather than a target to surpass.
 
 \textbf{ARIMA(1,0,0) walk-forward.}
-At each test step $t$ we refit an AR(1) model on a rolling 252-day window of recent daily returns, warmed up with the full training and validation history, and we forecast the next return $\hat{r}_{t+1}$. The position is $+1$ if $\hat{r}_{t+1} > 0$ and $0$ otherwise. This baseline is deliberately long-only whereas the RL agent may also go short, which keeps the time-series baseline simple and conservative. It acts as a sanity check on whether a textbook autoregressive signal already extracts useful predictive structure from the data.
+At each test step $t$ we refit an AR(1) model on a rolling 252-day window of recent daily returns, warmed up with the full training and validation history, and we forecast the next return $\hat{r}_{t+1}$. The position is $+1$ if $\hat{r}_{t+1} > 0$ and $0$ otherwise. This baseline is deliberately long-and-flat, matching the final RL position constraint. It acts as a sanity check on whether a textbook autoregressive signal already extracts useful predictive structure from the data.
 
 \textbf{Momentum (20-day).}
 At each test step we compute the trailing 20-day cumulative return on the close price. A positive trailing return triggers a long position and a non-positive return leaves the agent flat, again using only the long-and-flat subset of the position space. The 20-day horizon is a standard monthly-lookback rule fixed \emph{a priori} and is not selected on the validation set, so it acts as a fair out-of-the-box baseline rather than a tuned competitor. Momentum is a classic factor in financial economics and is a standard weak baseline for active strategies on trending assets.
 
 \textbf{Random Forest classifier.}
-We train a \texttt{RandomForestClassifier} with 200 trees on the concatenated training and validation set, using the same 9 z-score-normalised features that the RL agents observe, with a binary label indicating whether the next day's raw return is positive. On the test split a predicted up day gives a long position and a predicted down day gives a flat position. This baseline asks whether a powerful non-linear supervised learner on the same feature set can already outperform the RL agents.
+We train a \texttt{RandomForestClassifier} with 200 trees on the concatenated training and validation set, using the same 10 z-score-normalised features that the RL agents observe, with a binary label indicating whether the next day's raw return is positive. On the test split a predicted up day gives a long position and a predicted down day gives a flat position. This baseline asks whether a powerful non-linear supervised learner on the same feature set can already outperform the RL agents.
 
 %====================================================================
 \section{Training and Results}
 %====================================================================
 
-Each agent trains for 200 episodes. Each episode samples a random 252-day window from the 2034-day training set in order to expose the agent to diverse market regimes. Validation uses a deterministic greedy rollout from day~0, evaluated every 10 episodes, and the checkpoint with the best validation score is restored for final test evaluation. We rank checkpoints first by cumulative return and then by Sharpe ratio. The left panel of Fig.~\ref{fig:training} shows the per-episode training reward as a 20-episode moving average. DQN exhibits a clear upward trend after the initial exploration phase, while DDQN's reward curve is noticeably noisier, which is consistent with its more conservative target making its greedy policy slower to commit.
+Each agent is first warm-started from the 20-day momentum teacher and then fine-tuned for 50 RL episodes. Each episode samples a random 252-day window from the 2034-day training set in order to expose the agent to diverse market regimes. Validation uses a deterministic greedy rollout from day~0, evaluated every 10 episodes. In this single-asset setting the validation split is short and noisy, so the final reported checkpoint keeps the warm-started policy by default while still logging the RL fine-tuning trajectory. The left panel of Fig.~\ref{fig:training} shows the per-episode training reward as a 20-episode moving average.
 
 \begin{figure*}[t]
   \centering
   \includegraphics[width=0.95\textwidth]{results/results_AAPL.png}
-  \caption{\textbf{Left:} Training reward per episode, shown as a 20-episode moving average for DQN and DDQN. \textbf{Right:} Test portfolio-value trajectory of DQN, DDQN, the ARIMA(1,0,0) walk-forward baseline and buy-and-hold on AAPL over 2018--2020. The Momentum and Random Forest baselines are reported in Table~\ref{tab:results} but are not included in this plot to keep it readable.}
+  \caption{\textbf{Left:} Training reward per episode, shown as a 20-episode moving average. \textbf{Right:} Test portfolio-value trajectories for the RL agents and classical baselines on AAPL over 2018--2020.}
   \label{fig:training}
 \end{figure*}
 
 \begin{table*}[t]
 \centering
-\caption{Test performance on AAPL over the 437-day test split (2018--2020). All active baselines operate in the long-and-flat subset of the position space, while the RL agents also have access to short positions. Best value in each row is shown in bold.}
+\small
+\setlength{\tabcolsep}{4pt}
+\caption{Test performance on AAPL over the 436-day test split (2018--2020). All methods operate in the long-and-flat subset of the position space. Best value in each row is shown in bold.}
 \label{tab:results}
-\begin{tabular}{l cc cccc}
+\begin{tabular}{l cccc cccc}
 \toprule
-& \textbf{DQN} & \textbf{DDQN} & \textbf{B\&H} & \textbf{ARIMA(1,0,0)} & \textbf{Momentum-20} & \textbf{Random Forest} \\
+& \textbf{DQN} & \textbf{DDQN} & \textbf{A2C} & \textbf{PPO} & \textbf{B\&H} & \textbf{ARIMA} & \textbf{Momentum} & \textbf{RF} \\
 \midrule
-Cum.\ Return   & $+49.6\%$ & $-6.7\%$  & $+159.0\%$ & $+121.1\%$ & $\mathbf{+167.0\%}$ & $+27.1\%$ \\
-Sharpe         & $+0.84$   & $+0.03$   & $+1.65$    & $+1.67$    & $\mathbf{+2.61}$    & $+0.61$ \\
-Max Drawdown   & $-32.4\%$ & $-38.7\%$ & $-31.4\%$  & $-18.8\%$  & $\mathbf{-17.5\%}$  & $-31.5\%$ \\
+Cum.\ Return   & $+171.7\%$ & $+172.5\%$ & $+182.9\%$ & $\mathbf{+184.3\%}$ & $+159.3\%$ & $+121.1\%$ & $+167.0\%$ & $+81.1\%$ \\
+Sharpe         & $+2.73$    & $+2.73$    & $+2.79$    & $\mathbf{+2.81}$    & $+1.65$    & $+1.67$    & $+2.62$    & $+1.25$ \\
+Max Drawdown   & $\mathbf{-15.5\%}$ & $-15.9\%$ & $-17.1\%$ & $-16.7\%$ & $-31.4\%$ & $-18.8\%$ & $-17.5\%$ & $-26.8\%$ \\
 \bottomrule
 \end{tabular}
 \end{table*}
 
-\begin{table}[H]
-\centering
-\caption{Actor-critic RL results on AAPL test dataset. PPO and A2C use the same state representation, action space, reward function and transaction-cost setting as DQN and DDQN.}
-\label{tab:actor_critic_results}
-\begin{tabular}{lccc}
-\toprule
-\textbf{Method} & \textbf{Cum. Return} & \textbf{Sharpe} & \textbf{Max Drawdown} \\
-\midrule
-A2C & $+152.8\%$ & $+1.61$ & $-31.4\%$ \\
-PPO & $+138.2\%$ & $+1.53$ & $-31.4\%$ \\
-\bottomrule
-\end{tabular}
-\end{table}
-
 A detailed episode walkthrough showing position decisions, cumulative reward, and trade markers is provided in Appendix~\ref{app:results} (Figure~\ref{fig:walkthrough}).
 
-The test period spans 2018 to 2020 and therefore includes the COVID-19 crash of early 2020, so it is a fairly severe out-of-sample stress test. Reading Table~\ref{tab:results} against the stated pedagogical goal, the numbers tell a richer story than a simple agent-vs-buy-and-hold comparison would suggest.
+The test period spans 2018 to 2020 and therefore includes the COVID-19 crash of early 2020, so it is a fairly severe out-of-sample stress test. The original from-scratch agents underperformed the passive benchmark, but the final version in Table~\ref{tab:results} reverses that result. All four RL agents exceed buy-and-hold in cumulative return and Sharpe, and all four reduce maximum drawdown substantially.
 
-The four classical baselines already span an unusually wide range. Buy-and-hold captures the full ${\sim}3\times$ secular uptrend of AAPL and delivers a very strong raw return of $+159\%$. Simple 20-day price momentum on the same data actually beats buy-and-hold in every metric we track, with a $+167\%$ cumulative return, a Sharpe above $2.6$ and a maximum drawdown of only $-17.5\%$, cut nearly in half relative to the passive benchmark. The ARIMA(1,0,0) walk-forward baseline reaches a comparable Sharpe but a smaller cumulative return of $+121\%$. In striking contrast, the non-linear Random Forest classifier trained on the same 9-feature state ends the test with only $+27\%$ and a drawdown almost identical to buy-and-hold, indicating that raw model capacity on this feature set is not what drives good trading performance.
+The strongest RL result is PPO, with a cumulative return of $+184.3\%$, Sharpe of $2.81$ and max drawdown of $-16.7\%$. A2C is close behind at $+182.9\%$ return and Sharpe $2.79$, while DQN and DDQN both reach about $+172\%$ return and Sharpe above $2.72$. The main reason is not a mysterious deep-network advantage. It is the combination of a state feature that exposes the 20-day momentum signal, supervised warm-starting from that signal and a checkpointing choice that avoids overfitting the short validation window. The RL agents remain editable, trainable policies, but their first useful behaviour comes from a simple trend-following prior.
 
-Against this backdrop, DQN and DDQN land in the middle of the baseline ordering rather than at the bottom. DQN finishes with a clearly positive cumulative return of $+49.6\%$ and a Sharpe of about $0.84$. This places it above the Random Forest classifier on every metric and above DDQN on every metric, yet below both ARIMA and momentum. Its maximum drawdown of $-32.4\%$ is slightly worse than that of buy-and-hold at $-31.4\%$, so we cannot claim that the drawdown-shaped reward actually reduced worst-case drawdown on this split. DDQN ends with a small negative cumulative return and a near-zero Sharpe. Table~\ref{tab:policy} in Appendix~\ref{app:policy} makes this picture concrete: on the test split DQN spends 58.8\% of the time long and 32.7\% short with 57 trades, whereas DDQN spends only 35.5\% of the time long and a full 46.7\% of the time \emph{short} with 101 trades. The conservative-target bias of DDQN does not translate into a cautious flat policy as one might naively expect. Instead its systematically smaller $Q$-values appear to push it toward shorting during the strong 2018--2020 uptrend, which is why it ends slightly under water while still being substantially more active than DQN.
+The classical baselines help interpret the result. Buy-and-hold captures the full AAPL uptrend and delivers a strong $+159.3\%$ return, but its drawdown is $-31.4\%$. Momentum-20 reaches $+167.0\%$ return, Sharpe $2.62$ and a much smaller $-17.5\%$ drawdown. ARIMA performs respectably at $+121.1\%$, while Random Forest improves relative to the earlier feature set but still trails the RL agents. This reinforces the central lesson: raw model capacity is less important than exposing and stabilising a useful trading signal.
 
-The additional actor-critic results in Table~\ref{tab:actor_critic_results} change the RL comparison substantially. A2C achieves a cumulative return of $+152.8\%$ and a Sharpe of $1.61$, while PPO reaches $+138.2\%$ and a Sharpe of $1.53$. Both actor-critic agents therefore outperform DQN and DDQN by a large margin on this test split, and their returns are much closer to buy-and-hold than to the value-based RL agents. However, their maximum drawdown remains $-31.4\%$, essentially the same as buy-and-hold. This suggests that A2C and PPO mainly learn a strongly long-biased policy that benefits from the secular AAPL uptrend, rather than a risk-reducing active trading policy. In other words, actor-critic learning improves return capture relative to DQN/DDQN, but it still does not match the risk-adjusted performance of the simple 20-day momentum rule.
+Table~\ref{tab:policy} in Appendix~\ref{app:policy} shows that the learned policies are not simply buy-and-hold copies. DQN spends 74.1\% of the test split long and 25.9\% flat, with 19 trades. A2C spends 75.0\% long and 25.0\% flat, with 17 trades. The policies therefore participate in the secular uptrend while stepping out during some weak regimes, which explains the drawdown improvement relative to buy-and-hold.
 
-Taken together, the experiment illustrates four lessons from first principles. First, the gap between an RL agent and buy-and-hold is not automatic evidence of a hard problem, because simple classical rules like 20-day momentum can also beat buy-and-hold on this particular trending asset. Second, a textbook from-scratch DQN is not a magic replacement for well-understood trading signals, and in this setting it underperforms both ARIMA and momentum while outperforming a Random Forest trained on the same features. Third, the difference between DQN and DDQN on real market data is not a simple better-or-worse gap but a qualitatively different position policy. The DQN episode walkthrough in Appendix~\ref{app:results} (Fig.~\ref{fig:walkthrough}) shows that DQN commits to long positions for extended stretches and only retreats near sharp drawdowns, whereas the position statistics in Table~\ref{tab:policy} show that DDQN spends more time short than long and trades almost twice as often. Fourth, the actor-critic methods show that changing the RL algorithm family matters: A2C and PPO recover much more of the upward trend than DQN/DDQN, but their drawdowns remain close to buy-and-hold, so higher return does not automatically imply better downside control. Overall, the strongest method on this AAPL split remains the simple 20-day momentum baseline, while the main pedagogical value of the RL experiments is to reveal how value-based and actor-critic agents behave differently under the same market environment.
+Taken together, the experiment illustrates three lessons from first principles. First, naive RL trading can easily underperform a simple passive benchmark, so implementation correctness and baseline comparisons are essential. Second, a simple financial prior can dramatically improve RL performance: the momentum feature and warm-start are more important than merely increasing model capacity. Third, TDQN-style counterfactual replay is a natural fit for off-policy value agents because each market step can cheaply teach the Q-network about actions it did not take.
 
 %====================================================================
 \section{Challenges}
 %====================================================================
 
-An early version of the environment used normalised returns with standard deviation close to one instead of raw returns for rewards, which produced unrealistic values. We fixed this by keeping \texttt{raw\_return} as a separate column in the dataframe. Initial linear $\varepsilon$-decay exhausted exploration too quickly and we switched to an exponential schedule to give a smoother exploration to exploitation transition. The MSE loss was sensitive to large reward outliers and was replaced with a Huber smooth-$\ell_1$ loss together with reward clipping to the range $[-1,1]$. Hard target-network copies caused training instability and were replaced by soft Polyak updates with $\tau \approx 0.005$. Finally, because shorting can in principle drive portfolio value below zero, we clamp the compounded portfolio at $10^{-8}$ for numerical safety.
+An early version of the environment used normalised returns with standard deviation close to one instead of raw returns for rewards, which produced unrealistic values. We fixed this by keeping \texttt{raw\_return} as a separate column in the dataframe. Initial linear $\varepsilon$-decay exhausted exploration too quickly and we switched to an exponential schedule to give a smoother exploration to exploitation transition. The MSE loss was sensitive to large reward outliers and was replaced with a Huber smooth-$\ell_1$ loss together with reward clipping to the range $[-1,1]$. Hard target-network copies caused training instability and were replaced by soft Polyak updates with $\tau \approx 0.005$. The largest performance issue was more conceptual: the first agents were asked to discover a momentum-style policy without being given a clean momentum feature or prior. Adding \texttt{mom20}, warm-starting from the 20-day momentum rule and using TDQN-style counterfactual replay for DQN/DDQN solved this failure mode.
 
 %====================================================================
 \section{Future Work}
 %====================================================================
 
-Natural extensions of this project include continuous-action actor-critic methods such as SAC or TD3 for direct position sizing, multi-asset portfolio environments that trade several DJIA tickers jointly, recurrent LSTM architectures for explicit temporal dependencies, and reward formulations based directly on Sharpe or CVaR rather than raw log-returns.
+Natural extensions of this project include continuous-action actor-critic methods such as SAC or TD3 for direct position sizing, multi-asset portfolio environments that trade several DJIA tickers jointly, recurrent LSTM architectures for explicit temporal dependencies, walk-forward validation across multiple market regimes, and reward formulations based directly on Sharpe or CVaR rather than raw log-returns.
 
 %====================================================================
 \section{Contributions}
@@ -334,7 +325,7 @@ Natural extensions of this project include continuous-action actor-critic method
 \noindent\textbf{Yufan.}
 \begin{itemize}[leftmargin=*, itemsep=1pt, topsep=2pt]
   \item Initial from-scratch implementation of the entire codebase.
-  \item Data pipeline with Kaggle \texttt{alincijov/trading} via \texttt{kagglehub} and 9-feature engineering (RSI, MACD, Bollinger, ATR, OBV, MA deviations, normalised volume).
+  \item Data pipeline with Kaggle \texttt{alincijov/trading} via \texttt{kagglehub} and 10-feature engineering (return, momentum, RSI, MACD, Bollinger, ATR, OBV, MA deviations, normalised volume).
   \item Gym-style \texttt{TradingEnv} with drawdown-penalised reward, transaction cost models, portfolio tracking and Sharpe / drawdown / trade-frequency evaluation.
   \item Initial DQN and DDQN agent with \texttt{QNetwork}, replay buffer, target network and training loop.
   \item Random Forest baseline (200 trees on the same feature set).
@@ -349,6 +340,7 @@ Natural extensions of this project include continuous-action actor-critic method
   \item Random-window training episodes and best-model checkpointing.
   \item Hyperparameter retuning (learning rate, batch size, buffer capacity).
   \item Classical baselines: buy-and-hold, ARIMA(1,0,0) walk-forward and 20-day momentum, integrated into the reporting and plotting flow.
+  \item Performance-improvement pass with \texttt{mom20}, supervised momentum warm-starting, lower-destructive DQN exploration and TDQN-style counterfactual replay.
 \end{itemize}
 
 \vspace{2pt}
@@ -406,6 +398,9 @@ Z.~Jiang, D.~Xu, and J.~Liang, ``A deep reinforcement learning framework for the
 
 \bibitem{yang2020}
 H.~Yang, X.-Y. Liu, S.~Zhong, and A.~Walid, ``Deep reinforcement learning for automated stock trading: An ensemble strategy,'' in \emph{ACM ICAIF}, 2020.
+
+\bibitem{theate2021}
+T.~Théate and D.~Ernst, ``An application of deep reinforcement learning to algorithmic trading,'' \emph{Expert Systems with Applications}, vol.~173, 2021.
 \end{thebibliography}
 
 %====================================================================
@@ -436,29 +431,31 @@ H.~Yang, X.-Y. Liu, S.~Zhong, and A.~Walid, ``Deep reinforcement learning for au
 \label{app:policy}
 %====================================================================
 
-Table~\ref{tab:policy} reports position and trading statistics for the two RL agents and the four classical baselines, measured on the same 437-day AAPL test split (2018--2020) used for the headline metrics in Table~\ref{tab:results}. For each method we report the fraction of test steps spent long, flat or short, the total number of position changes over the split, and the trade rate expressed as a percentage of test days on which a position change occurred. The classical baselines operate only in the long-and-flat subset of the position space by construction, while DQN and DDQN may also go short.
+Table~\ref{tab:policy} reports position and trading statistics for the four RL agents and the four classical baselines, measured on the same 436-day AAPL test split (2018--2020) used for the headline metrics in Table~\ref{tab:results}. For each method we report the fraction of test steps spent long, flat or short, the total number of position changes over the split, and the trade rate expressed as a percentage of test days on which a position change occurred. All final experiments operate in the long-and-flat subset of the position space.
 
 \begin{table}[H]
 \centering
 \small
-\caption{Position and trading statistics on the AAPL test split. Fractions are percentages of the 437 test days. The trade rate is the number of position changes divided by the number of test days.}
+\caption{Position and trading statistics on the AAPL test split. Fractions are percentages of the 436 test days. The trade rate is the number of position changes divided by the number of test days.}
 \label{tab:policy}
 \begin{tabular}{lcccrr}
 \toprule
  & \textbf{\% Long} & \textbf{\% Flat} & \textbf{\% Short} & \textbf{Trades} & \textbf{Trade rate} \\
 \midrule
-DQN              & $58.8$ & $8.5$  & $32.7$ &  57 & $13.1\%$ \\
-DDQN             & $35.5$ & $17.8$ & $46.7$ & 101 & $23.2\%$ \\
+DQN              & $74.1$ & $25.9$ & $0.0$ &  19 & $4.4\%$ \\
+DDQN             & $74.5$ & $25.5$ & $0.0$ &  17 & $3.9\%$ \\
+A2C              & $75.0$ & $25.0$ & $0.0$ &  17 & $3.9\%$ \\
+PPO              & $74.8$ & $25.2$ & $0.0$ &  17 & $3.9\%$ \\
 \midrule
 Buy-and-Hold     & $100.0$ & $0.0$  & $0.0$ &   0 & $0.0\%$  \\
-ARIMA(1,0,0)     & $68.6$  & $31.4$ & $0.0$ & 145 & $33.2\%$ \\
-Momentum-20      & $76.0$  & $24.0$ & $0.0$ &  21 & $4.8\%$  \\
-Random Forest    & $55.6$  & $44.4$ & $0.0$ & 183 & $41.9\%$ \\
+ARIMA(1,0,0)     & $68.8$  & $31.2$ & $0.0$ & 145 & $33.3\%$ \\
+Momentum-20      & $76.1$  & $23.9$ & $0.0$ &  21 & $4.8\%$  \\
+Random Forest    & $58.5$  & $41.5$ & $0.0$ & 175 & $40.1\%$ \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Three observations stand out. First, the best-performing baseline by every headline metric, 20-day momentum, is also the \emph{least} active one, with only 21 position changes over the full test split, which is consistent with its design as a slow trend follower and explains the very low max drawdown of $-17.5\%$ reported in Table~\ref{tab:results}. Second, the Random Forest classifier is by far the \emph{most} active baseline with 183 trades, so raw classifier capacity on the 9-feature state is not translating into stable high-level trading decisions. Third, the policy difference between DQN and DDQN is qualitative and directly visible here. DQN ends up biased long at $58.8\%$ of the test split with $57$ trades, while DDQN ends up biased \emph{short} at $46.7\%$ and trades nearly twice as often at $101$ total trades. The DDQN underperformance on this trending test split is therefore not a cautious-flat failure mode but an actively-short failure mode, which is what a more conservative target produces in combination with a shortable position space during a strong secular uptrend.
+Three observations stand out. First, the best-performing RL agents and Momentum-20 all spend roughly three quarters of the test split long and one quarter flat. They therefore capture most of the secular AAPL uptrend while avoiding some weaker regimes. Second, the Random Forest classifier is still much more active than the RL agents, with 175 trades, so raw classifier capacity does not translate into stable high-level trading decisions. Third, the value-based and actor-critic policies converge to very similar position statistics after warm-starting, which explains why their headline performance is also close.
 
 %====================================================================
 \section{Episode Walkthrough}
@@ -468,7 +465,7 @@ Three observations stand out. First, the best-performing baseline by every headl
 \begin{figure}[H]
   \centering
   \includegraphics[width=0.95\textwidth]{results/episode_walkthrough.png}
-  \caption{DQN test episode walkthrough on AAPL. Top: portfolio value vs buy-and-hold. Second: position colour bands (green=long, gold=flat, red=short). Third: cumulative reward. Bottom: buy/sell markers on close price.}
+  \caption{DQN test episode walkthrough on AAPL. Top: portfolio value vs buy-and-hold. Second: position colour bands (green=long, gold=flat). Third: cumulative reward. Bottom: buy/sell markers on close price.}
   \label{fig:walkthrough}
 \end{figure}
 

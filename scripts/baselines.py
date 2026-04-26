@@ -114,7 +114,7 @@ def _cache_paths(results_dir: str, ticker: str):
     )
 
 
-def _load_cache(results_dir: str, ticker: str):
+def _load_cache(results_dir: str, ticker: str, expected_length: int | None = None):
     metrics_path, portfolios_path = _cache_paths(results_dir, ticker)
     if not (os.path.exists(metrics_path) and os.path.exists(portfolios_path)):
         return None
@@ -134,6 +134,10 @@ def _load_cache(results_dir: str, ticker: str):
         col: portfolios_df[col].dropna().to_numpy(dtype=np.float64)
         for col in portfolios_df.columns
     }
+    if expected_length is not None:
+        if any(len(portfolio) != expected_length for portfolio in portfolios.values()):
+            return None
+
     return portfolios, results
 
 
@@ -223,7 +227,7 @@ def run_all_baselines(
     refresh: bool = False,
 ):
     if results_dir and ticker and not refresh:
-        cached = _load_cache(results_dir, ticker)
+        cached = _load_cache(results_dir, ticker, expected_length=len(test_df))
         if cached is not None:
             return cached
 

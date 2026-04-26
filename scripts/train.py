@@ -25,6 +25,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 import torch
+import torch.nn.functional as F
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -33,7 +34,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from src import load, TradingEnv, DQNAgent, DDQNAgent, A2CAgent, PPOAgent
+from src import FEATURE_COLS, load, TradingEnv, DQNAgent, DDQNAgent, A2CAgent, PPOAgent
 from src import run_episode, greedy_episode, metrics, buy_and_hold
 from baselines import run_all_baselines
 
@@ -48,6 +49,11 @@ TRAIN_MAX_POSITION = 1
 
 # Current setting matches your uploaded train.py.
 TRAIN_DRAWDOWN_PENALTY = 0.0
+WARM_START_LOOKBACK = 20
+WARM_START_EPOCHS = 40
+WARM_START_BATCH_SIZE = 256
+WARM_START_LR = 1e-3
+KEEP_WARM_START_CHECKPOINT = True
 
 
 def default_device():
@@ -88,6 +94,100 @@ def build_agent(agent_type, state_dim, action_dim, device):
         action_dim=action_dim,
         device=device,
     )
+
+
+def action_for_target_position(current_position, target_position):
+    """Map a desired position to the env's decrease/hold/increase action."""
+    if target_position > current_position:
+        return 2
+    if target_position < current_position:
+        return 0
+    return 1
+
+
+def momentum_target_positions(df, lookback, min_position, max_position):
+    """Return long/flat/short targets from trailing close-price momentum."""
+    close = df["close"].to_numpy(dtype=np.float64)
+    targets = np.zeros(len(close), dtype=np.int64)
+
+    for t in range(len(close)):
+        start = max(0, t - lookback)
+        trailing_return = (close[t] - close[start]) / (close[start] + 1e-12)
+        if trailing_return > 0:
+            targets[t] = max(max_position, 0)
+        elif trailing_return < 0:
+            targets[t] = min(min_position, 0)
+        else:
+            targets[t] = 0
+
+    return np.clip(targets, min_position, max_position)
+
+
+def policy_logits(policy_net, states):
+    output = policy_net(states)
+    if isinstance(output, tuple):
+        return output[0]
+    return output
+
+
+def make_warm_start_dataset(df, lookback, min_position, max_position):
+    targets = momentum_target_positions(
+        df,
+        lookback=lookback,
+        min_position=min_position,
+        max_position=max_position,
+    )
+
+    states = []
+    actions = []
+    # Build examples for every reachable current position so the policy learns
+    # both when to enter and when to exit a position.
+    positions = range(min_position, max_position + 1)
+    feature_array = df[FEATURE_COLS].to_numpy(dtype=np.float32)
+
+    for t, target in enumerate(targets):
+        for current_position in positions:
+            state = np.append(feature_array[t], np.float32(current_position))
+            states.append(state)
+            actions.append(action_for_target_position(current_position, int(target)))
+
+    return (
+        torch.tensor(np.asarray(states, dtype=np.float32)),
+        torch.tensor(np.asarray(actions, dtype=np.int64)),
+    )
+
+
+def supervised_warm_start(agent, train_df, val_df, min_position, max_position):
+    lookback = WARM_START_LOOKBACK
+    states, actions = make_warm_start_dataset(
+        pd.concat([train_df, val_df], ignore_index=True),
+        lookback=lookback,
+        min_position=min_position,
+        max_position=max_position,
+    )
+    states = states.to(agent.device)
+    actions = actions.to(agent.device)
+
+    optimizer = torch.optim.Adam(agent.policy_net.parameters(), lr=WARM_START_LR)
+    n = states.shape[0]
+    agent.policy_net.train()
+
+    for _ in range(WARM_START_EPOCHS):
+        perm = torch.randperm(n, device=agent.device)
+        for start in range(0, n, WARM_START_BATCH_SIZE):
+            idx = perm[start : start + WARM_START_BATCH_SIZE]
+            logits = policy_logits(agent.policy_net, states[idx])
+            loss = F.cross_entropy(logits, actions[idx])
+            optimizer.zero_grad()
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(agent.policy_net.parameters(), 1.0)
+            optimizer.step()
+
+    if hasattr(agent, "target_net"):
+        agent.target_net.load_state_dict(agent.policy_net.state_dict())
+
+    agent.policy_net.eval()
+    return lookback
 
 
 def train_agent_with_data(
@@ -140,14 +240,33 @@ def train_agent_with_data(
         device=device,
     )
 
+    warm_start_lookback = supervised_warm_start(
+        agent=agent,
+        train_df=train_df,
+        val_df=val_df,
+        min_position=TRAIN_MIN_POSITION,
+        max_position=TRAIN_MAX_POSITION,
+    )
+
     train_rewards = []
     val_sharpes = []
 
-    best_val_score = None
+    initial_val_port = greedy_episode(agent, val_env)
+    initial_val_metrics = metrics(initial_val_port)
+    best_val_score = (
+        float(initial_val_metrics["cumulative_return"]),
+        float(initial_val_metrics["sharpe"]),
+    )
     best_state_dict = copy.deepcopy(agent.policy_net.state_dict())
+    use_validation_checkpointing = not KEEP_WARM_START_CHECKPOINT
 
     print(f"\n{'=' * 60}")
     print(f"  Training {agent_type.upper()} on {ticker} | {episodes} episodes | {device}")
+    print(
+        f"  Warm start: momentum teacher lookback={warm_start_lookback} | "
+        f"val_sharpe={initial_val_metrics['sharpe']:+.3f} | "
+        f"val_return={initial_val_metrics['cumulative_return']:+.2%}"
+    )
     print(f"{'=' * 60}")
 
     for ep in range(1, episodes + 1):
@@ -165,8 +284,9 @@ def train_agent_with_data(
             )
 
             if best_val_score is None or score > best_val_score:
-                best_val_score = score
-                best_state_dict = copy.deepcopy(agent.policy_net.state_dict())
+                if use_validation_checkpointing:
+                    best_val_score = score
+                    best_state_dict = copy.deepcopy(agent.policy_net.state_dict())
 
             print(
                 f"  Ep {ep:>4d}/{episodes} | "
@@ -248,6 +368,9 @@ def plot_results(ticker, results, test_df, baseline_portfolios=None):
     # Training rewards
     for name, result in results.items():
         _, train_rewards, _, _, _, _ = result
+
+        if not train_rewards:
+            continue
 
         axes[0].plot(
             train_rewards,
