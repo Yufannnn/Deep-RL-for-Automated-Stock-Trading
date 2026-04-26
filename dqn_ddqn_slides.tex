@@ -26,7 +26,7 @@
 
 \title{DQN \& DDQN for Automated Stock Trading}
 \subtitle{Implementation, Iterative Improvements \& Results}
-\author{Yufan Zhu \and Rutwik Shrikant Dharanappagoudar}
+\author{Yufan Zhu \and Rutwik Shrikant Dharanappagoudar \and Fei Xin}
 \date{\today}
 
 \begin{document}
@@ -38,35 +38,61 @@
 % ---------------------------------------------------------------------
 \section{Yufan: Data, Environment \& Initial System}
 
-\begin{frame}[shrink=5]{Yufan --- Data Pipeline \& Feature Engineering}
+\begin{frame}[shrink=5]{Yufan --- Data Processing}
 \begin{columns}[T]
 
-\begin{column}{0.55\textwidth}
+\begin{column}{0.58\textwidth}
 \vspace{-0.4em}
 \includegraphics[width=\linewidth]{data_exploration.png}
 
-\vspace{0.2em}
-\includegraphics[width=\linewidth, height=2.5cm, keepaspectratio]{technical_indicators.png}
+\vspace{0.4em}
+\includegraphics[width=\linewidth, height=3.2cm, keepaspectratio]{feature_distributions.png}
 
 \vspace{-0.1em}
-{\tiny AAPL is split chronologically into train, validation and test periods; all normalisation uses train-set statistics only.}
+{\tiny Train / val / test distributions overlap after train-only z-score normalisation, confirming no look-ahead bias.}
 \end{column}
 
-\begin{column}{0.43\textwidth}
+\begin{column}{0.40\textwidth}
 \vspace{-0.4em}
 {\scriptsize \textbf{Reproducible market-data pipeline}}
 
 \vspace{0.2em}
 {\tiny
 \begin{itemize}\setlength\itemsep{3pt}
-  \item Kaggle \texttt{alincijov/trading} loaded via \texttt{kagglehub}.
-  \item DJIA ticker subset with AAPL case study.
-  \item Chronological 70/15/15 train-val-test split.
-  \item Raw returns preserved for rewards and portfolios.
+  \item Daily OHLCV via Kaggle \texttt{alincijov/trading} (\texttt{kagglehub}).
+  \item DJIA ticker subset, AAPL as case study (2009--2024).
+  \item Chronological 70 / 15 / 15 train-val-test split.
+  \item Raw returns preserved for reward \& portfolio accounting.
+  \item Z-score normalisation uses \textbf{training stats only}.
 \end{itemize}
 }
 
+\vspace{0.4em}
+{\scriptsize \textbf{Why it matters}}
+
+\vspace{0.2em}
+{\tiny
+A leakage-safe pipeline is the prerequisite for honest RL evaluation:
+the test split must look like a true out-of-sample future to the agent.
+Same data, same split, same accounting for every model downstream.
+}
+\end{column}
+\end{columns}
+\end{frame}
+
+\begin{frame}[shrink=5]{Yufan --- Technical Indicators}
+\begin{columns}[T]
+
+\begin{column}{0.60\textwidth}
+\vspace{-0.4em}
+\includegraphics[width=\linewidth, height=4.2cm, keepaspectratio]{technical_indicators.png}
+
 \vspace{0.3em}
+\includegraphics[width=\linewidth, height=3.3cm, keepaspectratio]{feature_correlation.png}
+\end{column}
+
+\begin{column}{0.38\textwidth}
+\vspace{-0.4em}
 {\scriptsize \textbf{Nine engineered indicators}}
 
 \vspace{0.2em}
@@ -75,20 +101,35 @@
 \toprule
 \textbf{Group} & \textbf{Features} \\
 \midrule
-Trend & Return, MA5 dev., MA20 dev. \\
-Momentum & RSI-14, MACD \\
-Volatility & Bollinger width, ATR \\
-Volume & Normalised volume, OBV \\
+Trend       & Return, MA5 dev., MA20 dev. \\
+Momentum    & RSI-14, MACD signal \\
+Volatility  & Bollinger width, ATR \\
+Volume      & Normalised volume, OBV \\
 \bottomrule
 \end{tabular}}
 
-\vspace{0.35em}
-{\tiny \textcolor{accent}{\textbf{Goal:}} give each agent the same clean, leakage-safe state representation before comparing algorithms.}
+\vspace{0.4em}
+{\scriptsize \textbf{Design rationale}}
+
+\vspace{0.2em}
+{\tiny
+\begin{itemize}\setlength\itemsep{3pt}
+  \item Each family captures a distinct market regime.
+  \item Correlation heatmap shows mostly low cross-correlation
+        — features carry complementary signal.
+  \item Strongest pair: BB width vs ATR ($\approx 0.63$),
+        both encode volatility.
+\end{itemize}
+}
+
+\vspace{0.3em}
+{\tiny \textcolor{accent}{\textbf{Goal:}} a clean 9-dimensional state vector
+that lets the agent learn from price, momentum, volatility and volume jointly.}
 \end{column}
 \end{columns}
 \end{frame}
 
-\begin{frame}[shrink=5]{Yufan --- Trading Environment \& Evaluation}
+\begin{frame}[shrink=5]{Yufan --- Trading Environment \& Training}
 \begin{columns}[T]
 
 \begin{column}{0.52\textwidth}
@@ -127,86 +168,34 @@ r_t &= \log(V_t/V_{t-1}) + \lambda \min(0, \mathrm{drawdown}_t)
 
 \begin{column}{0.46\textwidth}
 \vspace{-0.4em}
-{\scriptsize \textbf{Environment design choices}}
+{\scriptsize \textbf{Environment design}}
 
 \vspace{0.2em}
 {\tiny
-\begin{itemize}\setlength\itemsep{3pt}
-  \item Positions: short, flat, long.
-  \item Actions move position by one step.
+\begin{itemize}\setlength\itemsep{2pt}
+  \item Positions: short, flat, long; actions shift by one step.
   \item Transaction cost: 10 bps per position change.
   \item Drawdown penalty discourages fragile portfolios.
-  \item Full portfolio history tracked every episode.
 \end{itemize}
 }
-
-\vspace{0.2em}
-\includegraphics[width=\linewidth, height=3.2cm, keepaspectratio]{episode_walkthrough.png}
-
-\vspace{-0.1em}
-{\tiny The walkthrough view links actions to portfolio value, cumulative reward and buy/sell timing.}
-\end{column}
-\end{columns}
-\end{frame}
-
-\begin{frame}[shrink=5]{Yufan --- Initial Agents, Baselines \& Report Assets}
-\begin{columns}[T]
-
-\begin{column}{0.48\textwidth}
-\vspace{-0.3em}
-{\scriptsize \textbf{Initial from-scratch system}}
-
-\vspace{0.2em}
-{\tiny
-\begin{itemize}\setlength\itemsep{3pt}
-  \item Built the first complete codebase.
-  \item Implemented \texttt{QNetwork}, replay buffer and target network.
-  \item Added DQN/DDQN training and evaluation loops.
-  \item Added Random Forest baseline with 200 trees.
-  \item Produced data/training figures and appendix material.
-\end{itemize}
-}
-
-\vspace{0.35em}
-{\tiny
-\renewcommand{\arraystretch}{1.15}
-\begin{tabular}{@{}p{1.9cm}p{3.9cm}@{}}
-\toprule
-\textbf{Layer} & \textbf{Yufan output} \\
-\midrule
-Data & Kaggle download, indicators, splits \\
-Env & State, reward, costs, metrics \\
-Agents & First DQN/DDQN implementation \\
-Baselines & Random Forest comparison \\
-Report & Figures, appendix, writing \\
-\bottomrule
-\end{tabular}}
-\end{column}
-
-\begin{column}{0.50\textwidth}
-\vspace{-0.4em}
-\includegraphics[width=\linewidth, height=3.7cm, keepaspectratio]{feature_distributions.png}
 
 \vspace{0.3em}
-\begin{block}{\tiny Why this section matters}
-\vspace{-0.4em}
-{\tiny
-The project depends on a consistent experimental scaffold: same features, same split,
-same portfolio accounting and same metrics for every model. This makes later DQN/DDQN
-refinements comparable instead of changing the task underneath the agent.
-}
-\vspace{-0.2em}
-\end{block}
+{\scriptsize \textbf{Training loop}}
 
-\vspace{0.15em}
-\begin{block}{\tiny Presentation hand-off}
-\vspace{-0.4em}
+\vspace{0.2em}
 {\tiny
-Yufan establishes the dataset, environment and initial learning system; Rutwik then
-focuses on algorithmic refinements, stronger baselines and final result analysis.
+\begin{itemize}\setlength\itemsep{2pt}
+  \item Each episode replays the full $\sim$2{,}800-day train split.
+  \item Greedy validation rollout every 10 episodes ($\varepsilon=0$).
+  \item Sharpe, max DD, trade count computed at episode end.
+\end{itemize}
 }
-\vspace{-0.2em}
-\end{block}
+
+\vspace{0.2em}
+\includegraphics[width=\linewidth, height=2.8cm, keepaspectratio]{episode_walkthrough.png}
+
+\vspace{-0.1em}
+{\tiny Walkthrough links actions to portfolio value, cumulative reward and trade timing.}
 \end{column}
 \end{columns}
 \end{frame}
@@ -419,5 +408,10 @@ Random Forest             & +81.1\%  & 1.25 & $-26.8\%$ \\
 \end{column}
 \end{columns}
 \end{frame}
+
+% ---------------------------------------------------------------------
+% FEI XIN SECTION (slides appended from external PDF)
+% ---------------------------------------------------------------------
+\section{Fei Xin: Actor-Critic Methods}
 
 \end{document}

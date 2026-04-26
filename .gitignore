@@ -19,6 +19,15 @@ __pycache__/
 admin_week05.pdf
 archive.zip
 YF_signature.png
+project_group24.zip
+group 24.mp4
+*.mp4
+
+# Beamer build artifacts
+*.nav
+*.snm
+*.toc
+*.synctex(busy)
 
 # Ephemeral paper-improvement-loop state
 PAPER_IMPROVEMENT_STATE.json
