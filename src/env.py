@@ -3,7 +3,7 @@ from __future__ import annotations
 """
 TradingEnv: Gym-compatible single-asset trading environment.
 
-Observation : [return, dev5, dev20, rsi, macd_signal, bb_width, vol_norm, atr, obv_norm, position]
+Observation : [return, dev5, dev20, mom20, rsi, macd_signal, bb_width, vol_norm, atr, obv_norm, position]
 Actions     : 0 = Decrease position, 1 = Hold position, 2 = Increase position
 Reward      : position * raw_daily_return - cost - drawdown_penalty * drawdown
 
@@ -111,8 +111,69 @@ class TradingEnv:
 
     def _obs(self) -> np.ndarray:
         """Return current observation vector."""
+        return self._obs_for_position(self.position)
+
+    def _obs_for_position(self, position: int) -> np.ndarray:
         feats = self._features[self.t]
-        return np.append(feats, np.float32(self.position))
+        return np.append(feats, np.float32(position))
+
+    def _transition_cost(self, old_pos: int, new_pos: int) -> float:
+        if new_pos == old_pos:
+            return 0.0
+        if self.proportional_cost:
+            return self.transaction_cost * abs(new_pos - old_pos)
+        return self.transaction_cost
+
+    def _transition_reward(
+        self,
+        prev_val: float,
+        peak: float,
+        old_pos: int,
+        new_pos: int,
+        daily_ret: float,
+    ) -> tuple[float, float, bool]:
+        cost = self._transition_cost(old_pos, new_pos)
+        new_val = prev_val * (1 + new_pos * daily_ret - cost)
+        reward = float(np.log((new_val + 1e-12) / (prev_val + 1e-12)))
+        dd = (new_val - peak) / (peak + 1e-8) if new_val < peak else 0.0
+        reward += self.drawdown_penalty * dd
+        reward = float(np.clip(reward, -1.0, 1.0))
+        return reward, max(new_val, 1e-8), new_pos != old_pos
+
+    def _counterfactuals(
+        self,
+        actual_action: int,
+        old_pos: int,
+        prev_val: float,
+        peak: float,
+        daily_ret: float,
+        done: bool,
+    ) -> list[tuple[int, float, np.ndarray, float]]:
+        """TDQN-style alternate-action transitions for off-policy replay."""
+        transitions = []
+
+        for other_action, delta in ACTION_TO_DELTA.items():
+            if other_action == actual_action:
+                continue
+
+            other_pos = int(np.clip(old_pos + delta, self.min_position, self.max_position))
+            other_reward, _, _ = self._transition_reward(
+                prev_val=prev_val,
+                peak=peak,
+                old_pos=old_pos,
+                new_pos=other_pos,
+                daily_ret=daily_ret,
+            )
+            transitions.append(
+                (
+                    other_action,
+                    other_reward,
+                    self._obs_for_position(other_pos),
+                    float(done),
+                )
+            )
+
+        return transitions
 
     def step(self, action: int):
         """Execute one trading step.
@@ -125,32 +186,21 @@ class TradingEnv:
         delta = ACTION_TO_DELTA[action]
         self.position = int(np.clip(self.position + delta, self.min_position, self.max_position))
         new_pos = self.position
-        traded = new_pos != old_pos
         self.t += 1
 
         done = self.t >= self.end_t
         daily_ret = self._raw_returns[self.t]
 
-        # Transaction cost: flat fee or proportional to position change size
-        if traded:
-            if self.proportional_cost:
-                cost = self.transaction_cost * abs(new_pos - old_pos)
-            else:
-                cost = self.transaction_cost
-        else:
-            cost = 0.0
-
         prev_val = self.portfolio[-1]
-        new_val_tmp = prev_val * (1 + self.position * daily_ret - cost)
-
-        # log return reward (numerically stable)
-        reward = float(np.log((new_val_tmp + 1e-12) / (prev_val + 1e-12)))
-
-        # optional drawdown penalty
         peak = max(self.portfolio)
-        dd = (new_val_tmp - peak) / (peak + 1e-8) if new_val_tmp < peak else 0.0
-        reward += self.drawdown_penalty * dd
-        reward = float(np.clip(reward, -1.0, 1.0))
+        reward, new_val, traded = self._transition_reward(
+            prev_val=prev_val,
+            peak=peak,
+            old_pos=old_pos,
+            new_pos=new_pos,
+            daily_ret=daily_ret,
+        )
+
         # Update episode history
         self.positions.append(self.position)
         self.rewards.append(reward)
@@ -158,14 +208,21 @@ class TradingEnv:
             self.trades.append((self.t, old_pos, new_pos))
 
         # Track portfolio (compounded)
-        new_val = self.portfolio[-1] * (1 + self.position * daily_ret - cost)
-        self.portfolio.append(max(new_val, 1e-8))
+        self.portfolio.append(new_val)
 
         info = {
             "daily_return": daily_ret,
             "position": self.position,
             "traded": traded,
             "portfolio_value": self.portfolio[-1],
+            "counterfactuals": self._counterfactuals(
+                actual_action=action,
+                old_pos=old_pos,
+                prev_val=prev_val,
+                peak=peak,
+                daily_ret=daily_ret,
+                done=done,
+            ),
         }
 
         return self._obs(), reward, done, info

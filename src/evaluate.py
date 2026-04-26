@@ -19,6 +19,9 @@ def run_episode(agent, env, train=False, greedy=False, reset_kwargs=None):
         next_state, reward, done, info = env.step(action)
         if train:
             agent.push(state, action, reward, next_state, float(done))
+            if getattr(agent, "allow_counterfactual_replay", False):
+                for other_action, other_reward, other_next_state, other_done in info.get("counterfactuals", []):
+                    agent.push(state, other_action, other_reward, other_next_state, other_done)
             agent.update()
         state = next_state
         total_reward += reward

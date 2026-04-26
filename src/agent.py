@@ -58,9 +58,9 @@ class DQNAgent:
         self,
         state_dim: int,
         action_dim: int,
-        lr: float = 5e-4,
+        lr: float = 1e-4,
         gamma: float = 0.99,
-        epsilon_start: float = 1.0,
+        epsilon_start: float = 0.2,
         epsilon_end: float = 0.02,
         epsilon_decay: int = 20_000,
         batch_size: int = 128,
@@ -80,6 +80,7 @@ class DQNAgent:
         self.device = torch.device(device)
         self.double = double
         self.steps = 0
+        self.allow_counterfactual_replay = True
 
         self.policy_net = QNetwork(state_dim, action_dim).to(self.device)
         self.target_net = QNetwork(state_dim, action_dim).to(self.device)

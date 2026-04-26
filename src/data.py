@@ -8,6 +8,7 @@ daily OHLCV data in long format.
 Features computed per ticker:
   - Daily return (pct_change)
   - Price deviation from short/long-window moving averages (configurable, default 5/20)
+  - Trailing long-window momentum
   - RSI-14 (Relative Strength Index)
   - MACD signal (12/26/9 EMA crossover)
   - Bollinger Band width (long-window, 2-sigma)
@@ -26,8 +27,8 @@ TICKERS = ["AAPL", "MSFT", "JPM", "JNJ", "XOM", "GS", "HD", "MCD", "V", "DIS"]
 
 # Features used by the agent network (will be z-score normalised)
 FEATURE_COLS = [
-    "return", "dev5", "dev20", "rsi", "macd_signal", "bb_width", "vol_norm",
-    "atr", "obv_norm",
+    "return", "dev5", "dev20", "mom20", "rsi", "macd_signal", "bb_width",
+    "vol_norm", "atr", "obv_norm",
 ]
 
 
@@ -132,6 +133,7 @@ def compute_features(
         ma_long = p.rolling(long_window).mean()
         dev5 = (p - ma_short) / (ma_short + 1e-8)
         dev20 = (p - ma_long) / (ma_long + 1e-8)
+        mom20 = p.pct_change(long_window)
 
         # Technical indicators
         rsi = _compute_rsi(p) / 100.0  # scale to [0, 1]
@@ -152,6 +154,7 @@ def compute_features(
             "return": daily_return,
             "dev5": dev5,
             "dev20": dev20,
+            "mom20": mom20,
             "rsi": rsi,
             "macd_signal": macd_signal,
             "bb_width": bb_width,
